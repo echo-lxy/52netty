@@ -12,7 +12,7 @@ hero:
   actions:
     - theme: brand
       text: 快速开始
-      link: /netty_source_code_parsing/ready_to_go/instructions
+      link: /netty_source_code_parsing/ready_to_go/introduce
     - theme: alt
       text: GitHub
       link: https://github.com/echo-lxy/52netty

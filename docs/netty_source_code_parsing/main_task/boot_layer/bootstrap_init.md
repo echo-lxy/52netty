@@ -6,11 +6,11 @@
 
 先来引出 Netty 中使用的 **主从 Reactor IO 线程模型**
 
-![image-20241030010055604](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/image-20241030010055604.png?x-oss-process=image/watermark,image_aW1nL3dhdGVyLnBuZw==,g_nw,x_1,y_1)
+![image-20241030160358637](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410301603814.png?x-oss-process=image/watermark,image_aW1nL3dhdGVyLnBuZw==,g_nw,x_1,y_1)
 
 它在实现上又与 **Doug Lea** 在 Scalable IO in Java 论文中提到的经典`主从Reactor多线程模型`有所差异
 
-![img](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/1729647581149-69454ca7-2524-459f-8d82-391851d87461.png?x-oss-process=image/watermark,image_aW1nL3dhdGVyLnBuZw==,g_nw,x_1,y_1)
+![image-20241029194601543](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/image-20241029194601543.png)
 
 
 
@@ -191,7 +191,7 @@ public NioEventLoopGroup(int nThreads, Executor executor, final SelectorProvider
 
 `MultithreadEventExecutorGroup`这里就是本小节的核心，主要用来定义创建和管理`Reactor`的行为。
 
-![img](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/1730001538497-889235b8-cf57-416a-8773-13d2340209d6.png?x-oss-process=image/watermark,image_aW1nL3dhdGVyLnBuZw==,g_nw,x_1,y_1)
+![img](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/1730001538497-889235b8-cf57-416a-8773-13d2340209d6.png)
 
 首先介绍一个新的构造器参数：`EventExecutorChooserFactory chooserFactory`。
 
@@ -199,7 +199,7 @@ public NioEventLoopGroup(int nThreads, Executor executor, final SelectorProvider
 
 **下面就是本小节的主题**`**Reactor线程组**`**的创建过程：**
 
-![img](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/1730001691452-3db196c0-0a16-47aa-a460-b85348755c3e.png?x-oss-process=image/watermark,image_aW1nL3dhdGVyLnBuZw==,g_nw,x_1,y_1)
+![img](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/1730001691452-3db196c0-0a16-47aa-a460-b85348755c3e.png)
 
 接下来开始解释上述代码
 
@@ -244,7 +244,7 @@ protected abstract EventExecutor newChild(Executor executor, Object... args) thr
 
  这里我们解析的是 `NioEventLoopGroup`，我们来看一下 `newChild` 在该类中的实现：  
 
-![img](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/1730001885437-1e25f276-58d0-4f22-8ca3-06ceec5b5b71.png?x-oss-process=image/watermark,image_aW1nL3dhdGVyLnBuZw==,g_nw,x_1,y_1)
+![img](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/1730001885437-1e25f276-58d0-4f22-8ca3-06ceec5b5b71.png)
 
 前面提到的众多构造器参数，这里会通过可变参数 `Object... args` 传入到 Reactor 类 `NioEventLoop` 的构造器中。
 
@@ -322,7 +322,7 @@ public NioEventLoopGroup(ThreadFactory threadFactory) {
 
 `SelectorProvider` 在前面介绍的 `NioEventLoopGroup` 类构造函数中通过调用 `SelectorProvider.provider()` 被加载，并在 `NioEventLoopGroup#newChild` 方法中的可变长参数 `Object... args` 传递到 `NioEventLoop` 中的 `private final SelectorProvider provider` 字段中。  
 
-![img](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/1730002340847-d9863943-a60e-488b-9432-c1e20e74e9de.png?x-oss-process=image/watermark,image_aW1nL3dhdGVyLnBuZw==,g_nw,x_1,y_1)
+![img](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/1730002340847-d9863943-a60e-488b-9432-c1e20e74e9de.png)
 
 从`SelectorProvider`加载源码中我们可以看出，`SelectorProvider`的加载方式有三种，优先级如下：
 
@@ -455,7 +455,7 @@ Reactor 内的异步任务队列类型为 `MpscQueue`，这是由 JCTools 提供
 
 我们知道，Netty 中的 Reactor 能够线程安全地处理注册在其上的多个 `SocketChannel` 的 IO 数据，保证 Reactor 线程安全的核心原因正是因为这个 `MpscQueue`。它支持多个业务线程在处理完业务逻辑后，线程安全地向 `MpscQueue` 添加异步写任务，随后由单个 Reactor 线程来执行这些写任务。既然是单线程执行，那么其本身就具有线程安全性。
 
-![image-20241030011040309](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/image-20241030011040309.png?x-oss-process=image/watermark,image_aW1nL3dhdGVyLnBuZw==,g_nw,x_1,y_1)
+![image-20241030160511870](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410301605921.png?x-oss-process=image/watermark,image_aW1nL3dhdGVyLnBuZw==,g_nw,x_1,y_1)
 
 #### 3、创建 Channel 到 Reactor 的绑定策略
 
@@ -486,7 +486,7 @@ public abstract class MultithreadEventExecutorGroup extends AbstractEventExecuto
 
 ##### DefaultEventExecutorChooserFactory
 
-![img](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/1730004068243-49081d13-a0bf-4834-b02d-527b767de37c.png?x-oss-process=image/watermark,image_aW1nL3dhdGVyLnBuZw==,g_nw,x_1,y_1)
+![img](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/1730004068243-49081d13-a0bf-4834-b02d-527b767de37c.png)
 
 我们看到在 `newChooser` 方法中，绑定策略有两个分支，其不同之处在于需要判断 Reactor 线程组中的 Reactor 个数是否为 2 的次幂。
 
@@ -498,11 +498,11 @@ Netty 的绑定策略采用了 **round-robin** 轮询的方式来依次选择 Re
 
 **利用**`**%**`**运算的方式**`**Math.abs(idx.getAndIncrement() % executors.length)**`**来进行绑定。**
 
-![img](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/1730004143315-7fddeb7b-080d-4ddd-ad7a-e2912289e653.png?x-oss-process=image/watermark,image_aW1nL3dhdGVyLnBuZw==,g_nw,x_1,y_1)
+![img](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/1730004143315-7fddeb7b-080d-4ddd-ad7a-e2912289e653.png)
 
 **利用**`**&**`**运算的方式**`**idx.getAndIncrement() & executors.length - 1**`**来进行绑定。**
 
-![img](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/1730004136283-83fe0b50-4c59-49b0-ae4f-16ca4e30e6a9.png?x-oss-process=image/watermark,image_aW1nL3dhdGVyLnBuZw==,g_nw,x_1,y_1)
+<img src="https://echo798.oss-cn-shenzhen.aliyuncs.com/img/1730004136283-83fe0b50-4c59-49b0-ae4f-16ca4e30e6a9.png" alt="img" style="zoom:80%;" />
 
 #### 4、向 Reactor 线程组中所有的 Reactor 注册 terminated 回调函数
 
@@ -560,9 +560,7 @@ public final class EchoServer {
 
 现在Netty的`主从Reactor线程组`就已经创建完毕，此时Netty服务端的骨架已经搭建完毕，骨架如下：
 
-
-
-![image-20241030010736527](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/image-20241030010736527.png?x-oss-process=image/watermark,image_aW1nL3dhdGVyLnBuZw==,g_nw,x_1,y_1)
+<img src="https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410301620659.png?x-oss-process=image/watermark,image_aW1nL3dhdGVyLnBuZw==,g_nw,x_1,y_1" alt="image-20241030160609161" style="zoom:50%;" />
 
 ## 总结
 

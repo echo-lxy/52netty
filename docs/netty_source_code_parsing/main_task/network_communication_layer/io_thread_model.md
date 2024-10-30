@@ -10,21 +10,21 @@
 
 ### Classic Model
 
-![image-20241029194221068](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/image-20241029194221068.png?x-oss-process=image/watermark,image_aW1nL3dhdGVyLnBuZw==,g_nw,x_1,y_1)
+![image-20241029194221068](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/image-20241029194221068.png)
 
 ### Reactor
 
 #### 单Reactor单线程
 
-![image-20241029194312003](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/image-20241029194312003.png?x-oss-process=image/watermark,image_aW1nL3dhdGVyLnBuZw==,g_nw,x_1,y_1)
+![image-20241029194312003](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/image-20241029194312003.png)
 
 ### Reactor 多线程
 
-![image-20241029194526982](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/image-20241029194526982.png?x-oss-process=image/watermark,image_aW1nL3dhdGVyLnBuZw==,g_nw,x_1,y_1)
+![image-20241029194526982](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/image-20241029194526982.png)
 
 #### 主从Reactor多线程
 
-![image-20241029194601543](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/image-20241029194601543.png?x-oss-process=image/watermark,image_aW1nL3dhdGVyLnBuZw==,g_nw,x_1,y_1)
+![image-20241029194601543](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/image-20241029194601543.png)
 
 ### Proactor
 

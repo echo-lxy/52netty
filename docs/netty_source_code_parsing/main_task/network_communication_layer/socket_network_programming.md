@@ -13,7 +13,7 @@ TCP/IP 协议族 自顶向下包括
 
 如下图所示
 
-![image-20241029221357740](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/image-20241029221357740.png?x-oss-process=image/watermark,image_aW1nL3dhdGVyLnBuZw==,g_nw,x_1,y_1)
+![image-20241029221357740](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/image-20241029221357740.png)
 
 
 
@@ -21,7 +21,7 @@ TCP/IP 协议族 自顶向下包括
 
 那么这个系统调用是什么呢？我们如何去调用呢？对这就是 Socket
 
-![image-20241029221645821](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/image-20241029221645821.png?x-oss-process=image/watermark,image_aW1nL3dhdGVyLnBuZw==,g_nw,x_1,y_1)
+![image-20241029221645821](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/image-20241029221645821.png)
 
 原来Socket在这里。
 
@@ -47,7 +47,7 @@ Socket是应用层与TCP/IP协议族通信的中间软件抽象层，它是一�
 
 先来看一张 客户端/服务端 的 TCP 通信流程图
 
-![网络基础——socket的通信流程介绍，基于tcp协议通信的socket程序编写 - 1024bits - 博客园](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/1989606-20200813102302358-1945159613.png?x-oss-process=image/watermark,image_aW1nL3dhdGVyLnBuZw==,g_nw,x_1,y_1)
+![网络基础——socket的通信流程介绍，基于tcp协议通信的socket程序编写 - 1024bits - 博客园](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/1989606-20200813102302358-1945159613.png)
 
 **TCP 连接建立过程**
 
@@ -207,9 +207,9 @@ Linux内核中会维护两个队列:
 - 半连接队列(SYN 队列) : 接收到一个SYN 建立连接请求，处于 SYN RCVD 状态
 - 全连接队列(Accpet 队列):已完成TCP 三次握手过程，处于ESTABLISHED 状态;
 
-![img](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/1730020153397-76dca9be-8108-4abc-a332-c09d256c0fc0.png?x-oss-process=image/watermark,image_aW1nL3dhdGVyLnBuZw==,g_nw,x_1,y_1)
+![img](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/1730020153397-76dca9be-8108-4abc-a332-c09d256c0fc0.png)
 
-![img](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/1730021051626-6264cfe6-8e44-4ab5-b559-4a6384ba5d29.png?x-oss-process=image/watermark,image_aW1nL3dhdGVyLnBuZw==,g_nw,x_1,y_1)
+![img](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/1730021051626-6264cfe6-8e44-4ab5-b559-4a6384ba5d29.png)
 
 1. 客户端的协议栈向服务端发送了 SYN 包，并告诉服务端当前发送序列号 client isn，客户端进入 SYN SENT 状态。
 2. 服务端的协议栈收到这个包之后，和客户端进行 ACK 应答，应答的值为 client_isn+1，表示对 SYN 包 client isn 的确认，同时服务端也发送一个 SYN 包，告诉客户端当前我的发送序列号为 server_isn，服务端进入 SYN_RCVD 状态。
@@ -230,7 +230,7 @@ Linux内核中会维护两个队列:
 
 只有就完了三次握手，但是这个三次握手发生在socket的那几个函数中呢？请看下图：
 
-![image-20241029225000896](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/image-20241029225000896.png?x-oss-process=image/watermark,image_aW1nL3dhdGVyLnBuZw==,g_nw,x_1,y_1)
+![image-20241029225000896](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/image-20241029225000896.png)
 
 
 
@@ -244,7 +244,7 @@ Linux内核中会维护两个队列:
 
 上面介绍了socket中TCP的三次握手建立过程，及其涉及的socket函数。现在我们介绍socket中的四次握手释放连接的过程，请看下图：
 
-![image-20241029224950758](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/image-20241029224950758.png?x-oss-process=image/watermark,image_aW1nL3dhdGVyLnBuZw==,g_nw,x_1,y_1)
+![image-20241029224950758](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/image-20241029224950758.png)
 
 
 

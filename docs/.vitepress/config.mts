@@ -5,7 +5,9 @@ export default defineConfig({
   title: "52Netty",
   description: "www.52netty.com",
   lastUpdated: true,
-
+  markdown: {
+    math: true,
+  },
   head: [
     [
       "link",
@@ -169,6 +171,10 @@ export default defineConfig({
                   {
                     text: "分拣员的工作台：ChannelHandlerContext",
                     link: "/main_task/service_orchestration_layer/ChannelHandlerContext.md",
+                  },
+                  {
+                    text: "货物：被传播的 IO 事件",
+                    link: "/main_task/service_orchestration_layer/io_event.md",
                   },
                 ],
               },

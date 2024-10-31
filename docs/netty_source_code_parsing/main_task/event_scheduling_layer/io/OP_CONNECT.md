@@ -2,7 +2,7 @@
 
 ## 前言
 
-在 [Socket 编程基础](https://www.yuque.com/onejava/gwzrgm/nxcgfreilzqy1ycw) 中讲述了客户端和服务端Socket编程的状态流程图
+在 [Socket 网络编程](/netty_source_code_parsing/main_task/network_communication_layer/socket_network_programming) 中讲述了客户端和服务端Socket编程的状态流程图
 
 ![img](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410301658323.png)
 
@@ -10,7 +10,7 @@
 
 我们可知建立连接（connect），也就是 OP_CONNECT 事件是客户端这边的概念，也就是连接发起方的概念，当客户端 OP_CONNECT 事件产生，就说明第二次握手成功了，但是在Netty中不会阻塞等待第二次握手成功，而是在客户端发起 connnect 后往 文件套接字中注册OP_CONNECT 事件，然后Reactor线程就去干其他的事儿了，等待下次捕获到OP_CONNECT 事件时，再来完成注册Channel等一系列逻辑。
 
-客户端的connect对标服务端的accept，我们在[Netty 如何建立网络连接](https://www.yuque.com/onejava/gwzrgm/udg76b6z7ir6ld45)会讲到，服务器中的 bind listen操作都是在内核完成的，用户只需要调用Socket的accept就可以等待客户端的一个连接，但是我们的 Main Reactor 也是往文件描述符中注册了此OP_ACCEPT事件，并且以IO多路的方式来实现连接接收，接收成功后，服务端会生成一个NioSocketChannel来负责此通信，并将此Channel注册到Sub Reactor。
+客户端的connect对标服务端的accept，我们在[处理 OP_CONNECT 事件](/netty_source_code_parsing/main_task/event_scheduling_layer/io/OP_ACCEPT)会讲到，服务器中的 bind listen操作都是在内核完成的，用户只需要调用Socket的accept就可以等待客户端的一个连接，但是我们的 Main Reactor 也是往文件描述符中注册了此OP_ACCEPT事件，并且以IO多路的方式来实现连接接收，接收成功后，服务端会生成一个NioSocketChannel来负责此通信，并将此Channel注册到Sub Reactor。
 
 本文旨在说明 Netty 客户端如何去和Netty服务器建立连接，我们以Netty源码包中的EchoClient为模板进行讲述
 

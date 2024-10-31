@@ -1,131 +1,23 @@
-# ChannelHandler 接口
+# ChannelHandler 
 
-## 介绍
+## ChannelHandler 简介
+
+Netty中的ChannelHandler类似于工程对产品流水线生产中：生产线上的每一步的处理器，而生产线则就是Netty中的ChannelPipeline。Netty也正是通过ChannelHandler实现了业务与底层网络的解耦。Netty中的ChannelHandler按照输出字节流向分为In,Out,Duplex三种ChannelHandler，本文主要介绍前面两种，Netty中ChannelHandler关系图如下：
+
+![image-20241031100451212](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410311004253.png)
+
+- ChannelHander是顶级抽象，基础接口类。
+- ChannelHandlerAdapter则是ChannelHandler的一个适配器，对ChannelHandler添加了新的行为，用于判断当前Handler是否执行共享，ChannelHandler共享是指：如果一个ChannelHandler支持共享，则该ChannelHandler可以被添加到多个ChannelPipeline中。
+- ChannelInboundHandler、ChannelOutboundHandler则是分别对应进站与出站的ChannelHandler处理器。
+- ChannelInboundHandlerAdpater、ChannelOutboundHandlerAdapter分别实现了对应类型的ChannelHandler之外，还实现了ChannelHandlerAdpater接口，这样就有了判断是否是共享ChannelHandler的行为。
+
+我们接下来看看我们常接触到的和其有关系的核心接口和类
 
 > 处理器`ChannelHandler` 就是用来处理`I/O`事件或拦截`I/O`操作，并将其转发到所属管道 `ChannelPipeline`中的下一个处理器`ChannelHandler`。
 
-### 子类型
+### 源码
 
-`ChannelHandler`本身并没有提供很多方法，但是你通常必须实现它的一个子类型:
-
-1. `ChannelInboundHandler`处理入站`I/O`事件。
-2. `ChannelOutboundHandler`处理出站`I/O`操作。
-
-另外，为了方便使用，还提供了以下适配器类:
-
-1. `ChannelInboundHandlerAdapter`处理入站`I/O`事件。
-2. `ChannelOutboundHandlerAdapter`用于处理出站`I/O`操作。
-3. `ChannelDuplexHandler`处理入站和出站事件。
-
-### 上下文对象
-
-将`ChannelHandler` 添加到管道时，会创建这个`ChannelHandler`的上下文对象添加到管道中。
-
-> - `ChannelHandler`通过上下文对象与它所属的`ChannelPipeline`进行交互。
-> - 使用上下文对象，`ChannelHandler`可以向上游或下游传递事件，动态修改管道，或者存储特定于该处理器的信息(使用`AttributeKeys`)。
-
-上下文对象 即为 ChannelHandlerContext
-
-### 状态管理
-
-`ChannelHandler`经常需要存储一些状态信息，有两种方式:
-
-1. 最简单和推荐的方法是直接使用成员变量， 例如:
-
-   ```java
-    public interface Message {
-       // your methods here
-   }
-   
-   public class DataServerHandler extends SimpleChannelInboundHandler<Message> {
-   
-       private boolean loggedIn;
-   
-        @Override
-       public void channelRead0(ChannelHandlerContext ctx, Message message) {
-           if (message instanceof LoginMessage) {
-               authenticate((LoginMessage) message);
-               loggedIn = true;
-           } else (message instanceof GetDataMessage) {
-               if (loggedIn) {
-                   ctx.writeAndFlush(fetchSecret((GetDataMessage) message));
-               } else {
-                   fail();
-               }
-           }
-       }
-       ...
-   }
-   ```
-
-   > - 直接使用`ChannelHandler`成员变量`loggedIn` 来记录当前的登录状态。
-   > - 因为使用`ChannelHandler`成员变量保存状态，所以这个处理器在每个管道`ChannelPipeline`(也是每个通道`Channel`)中都是新的处理程序实例，不能和别的通道共享同一个`ChannelHandler`实例。
-
-   
-
-   ```java
-    // Create a new handler instance per channel.
-   // See ChannelInitializer.initChannel(Channel).
-   public class DataServerInitializer extends ChannelInitializer<Channel> {
-        @Override
-       public void initChannel(Channel channel) {
-           channel.pipeline().addLast("handler", new DataServerHandler());
-       }
-   }
-   ```
-
-2. 使用 
-
-   ```Java
-   AttributeKeys
-   ```
-
-   > - 尽管建议使用成员变量来存储处理程序的状态，但出于某些原因，您可能不想创建许多处理程序实例。
-   > - 在这种情况下，你可以使用上下文 `ChannelHandlerContext`提供的`AttributeKeys` 存储信息:
-
-   ```java
-   public interface Message {
-      // your methods here
-   }
-   
-   @Sharable
-   public class DataServerHandler extends SimpleChannelInboundHandler<Message> {
-      private final AttributeKey<Boolean> auth =
-            AttributeKey.valueOf("auth");
-   
-       @Override
-      public void channelRead(ChannelHandlerContext ctx, Message message) {
-          Attribute<Boolean> attr = ctx.attr(auth);
-          if (message instanceof LoginMessage) {
-              authenticate((LoginMessage) o);
-              attr.set(true);
-          } else (message instanceof GetDataMessage) {
-              if (Boolean.TRUE.equals(attr.get())) {
-                  ctx.writeAndFlush(fetchSecret((GetDataMessage) o));
-              } else {
-                  fail();
-              }
-          }
-      }
-      ...
-   }
-   public class DataServerInitializer extends ChannelInitializer<Channel> {
-   
-      private static final DataServerHandler SHARED = new DataServerHandler();
-   
-       @Override
-      public void initChannel(Channel channel) {
-          channel.pipeline().addLast("handler", SHARED);
-      }
-   }
-   ```
-
-   > - 注意这里的`ChannelHandler` 子类必须使用 `@Sharable` 注解修饰，否则会抛出异常。
-   > - 如果你想只创建一次该`ChannelHandler`的实例，并将其多次添加到一个或多个`ChannelPipeline`中，必须使用 `@Sharable` 注解修饰。
-
-## 源码
-
-```dart
+```Java
 public interface ChannelHandler {
 
     /**
@@ -175,7 +67,34 @@ public interface ChannelHandler {
 > - `exceptionCaught(...)`: 事件处理中抛出异常时，回调这个方法。已被废弃，建议使用子接口 `ChannelInboundHandler` 的 `exceptionCaught(...)` 方法。
 > - `@interface Sharable`： 只有被`@Sharable` 注解的`ChannelHandler` 同一个实例可以多次添加到一个或多个管道 `ChannelPipeline`。
 
-# ChannelInboundHandler 和 ChannelInboundInvoker
+### 源码注释
+
+**功能与职责**：
+
+- `ChannelHandler`用于处理I/O事件或拦截I/O操作，将其传递给`ChannelPipeline`中的下一个处理器。
+- 具体实现通常基于其子接口：
+  - `ChannelInboundHandler`：处理入站I/O事件。
+  - `ChannelOutboundHandler`：处理出站I/O操作。
+- 常用的适配器类包括：`ChannelInboundHandlerAdapter`、`ChannelOutboundHandlerAdapter`和`ChannelDuplexHandler`。
+
+**上下文对象**：
+
+- `ChannelHandler`通过`ChannelHandlerContext`与其所属的`ChannelPipeline`进行交互。使用上下文对象可以将事件传递给上游或下游，动态修改管道，或存储特定于处理器的信息（如`AttributeKey`）。
+
+**状态管理**：
+
+- `ChannelHandler`通常需要存储状态信息，推荐使用成员变量，以避免共享实例带来的竞争问题。
+- 另一种方案是使用`AttributeKey`，将状态与`ChannelHandlerContext`关联，从而可以安全地共享处理器实例。
+
+**@Sharable注解**：
+
+- 使用`@Sharable`注解的处理器可以在多个管道中复用（如果没有共享状态），否则需要为每个管道创建一个新实例。
+
+**附加资源**：
+
+- 详细信息请参考`ChannelHandler`、`ChannelPipeline`，以了解入站和出站操作的基本差异、管道流转方式及应用中的操作处理。
+
+## ChannelInboundHandler 和 ChannelInboundInvoker
 
 这两个接口相关联：
 
@@ -186,7 +105,7 @@ public interface ChannelHandler {
    > - `ChannelInboundInvoker` 的子接口管道 `ChannelPipeline` , 通过`ChannelInboundInvoker` 的方法，在整个入站处理器 `ChannelInboundHandler` 链表传递入站`I/O`事件。
    > - `ChannelInboundInvoker` 的子接口上下文 `ChannelHandlerContext` , 通过`ChannelInboundInvoker` 的方法，向 `ChannelInboundHandler` 链表下游传递入站`I/O`事件。
 
-## ChannelInboundHandler 接口
+### ChannelInboundHandler 接口
 
 ```java
 /**
@@ -283,7 +202,8 @@ public interface ChannelInboundHandler extends ChannelHandler {
 
 6. `void channelReadComplete(ChannelHandlerContext ctx)`
 
-> 当读操作读取的最后一条消息已被`channelRead(ChannelHandlerContext, Object)`消费后调用。
+   > 当读操作读取的最后一条消息已被`channelRead(ChannelHandlerContext, Object)`消费后调用。
+
 
 1. ```
    void userEventTriggered(ChannelHandlerContext ctx, Object evt)
@@ -303,7 +223,7 @@ public interface ChannelInboundHandler extends ChannelHandler {
 
    > 抛出异常是调用。
 
-## ChannelInboundInvoker 接口
+### ChannelInboundInvoker 接口
 
 ```Java
 public interface ChannelInboundInvoker {
@@ -396,29 +316,19 @@ public interface ChannelInboundInvoker {
 > - 你会发现 `ChannelInboundInvoker` 接口也是 `9` 个方法，和 `ChannelInboundHandler` 接口中的方法是一一对应的。
 > - 只不过`ChannelInboundHandler` 接口的方法，都回传了当前这个`ChannelInboundHandler`对应的上下文对象 `ChannelHandlerContext`。
 
-# ChannelOutboundHandler 和 ChannelOutboundInvoker
+## ChannelOutboundHandler 和 ChannelOutboundInvoker
 
 这两个接口相关联：
 
 1. `ChannelOutboundHandler` 用来处理出站`I/O`操作。
 
-2. ```
-   ChannelOutboundInvoker
-   ```
-
-    用来传递出站
-
-   ```
-   I/O
-   ```
-
-   操作。
-
+2. `ChannelOutboundInvoker`用来传递出站`I/O`操作。
+   
    > - `ChannelOutboundInvoker` 的子接口管道 `ChannelPipeline` , 通过`ChannelOutboundInvoker` 的方法，在整个出站处理器`ChannelOutboundHandler` 链表传递出站`I/O`操作。
    > - `ChannelOutboundInvoker` 的子接口上下文 `ChannelHandlerContext` , 通过`ChannelOutboundInvoker` 的方法，向 `ChannelOutboundHandler` 链表上游传递出站`I/O`操作。
    > - `ChannelOutboundInvoker` 的子接口通道 `Channel`, 它的`ChannelOutboundInvoker` 方法实现，就是直接调用通道 `Channel` 拥有的管道 `ChannelPipeline`对应方法。
 
-## 3.1 `ChannelOutboundHandler` 接口
+### `ChannelOutboundHandler` 接口
 
 
 
@@ -492,9 +402,7 @@ public interface ChannelOutboundHandler extends ChannelHandler {
 7. 向写缓冲区中写入数据 `write(...)`
 8. 将写缓冲区的数据发送到远端 `flush(...)`
 
-## 3.2 `ChannelOutboundInvoker` 接口
-
-
+###  `ChannelOutboundInvoker` 接口
 
 ```dart
 public interface ChannelOutboundInvoker {
@@ -675,11 +583,9 @@ public interface ChannelOutboundInvoker {
 
 `ChannelOutboundInvoker` 中大部分方法都是触发 `ChannelOutboundHandler` 中对应方法，只不过多了几个创建 `ChannelFuture` 实例的方法。
 
-# 四. 适配器类
+## 适配器类
 
-## 4.1 `ChannelHandlerAdapter` 抽样类
-
-
+### `ChannelHandlerAdapter` 抽样类
 
 ```java
 /**
@@ -775,9 +681,7 @@ public abstract class ChannelHandlerAdapter implements ChannelHandler {
 
 这个方法在每次管道添加 `ChannelHandler` 时，都会调用，保证 `ChannelHandler` 实例不会多次添加，除非它是可共享的。
 
-## 4.2 `ChannelInboundHandlerAdapter`,`ChannelOutboundHandlerAdapter`和`ChannelDuplexHandler`
-
-
+### `ChannelInboundHandlerAdapter`,`ChannelOutboundHandlerAdapter`和`ChannelDuplexHandler`
 
 ```dart
 public class ChannelInboundHandlerAdapter extends ChannelHandlerAdapter implements ChannelInboundHandler {
@@ -1064,11 +968,9 @@ public class ChannelDuplexHandler extends ChannelInboundHandlerAdapter implement
 
 你会发现这些方法都有一个 `@Skip` 注解，它的作用就是带有这个注解的事件处理器方法不会被`ChannelPipeline`调用，直接跳过它，寻找管道中下一个事件处理器。
 
-# 五. ChannelHandlerMask 类
+## ChannelHandlerMask 类
 
 这个类就是用来处理  `@Skip` 注解。
-
-
 
 ```java
 final class ChannelHandlerMask {
@@ -1287,3 +1189,77 @@ final class ChannelHandlerMask {
 
 > - 它首先拥有所有入站事件方法的标记 `MASK_ALL_INBOUND`, 如果它的某些入站事件方法被`@Skip` 修饰，那么就将这个方法对应的标记从当前标记中移除。
 > - 最后得到一个执行标记 `executionMask`，记录这个类事件方法是否被`@Skip` 修饰，通过它就可以判断需要跳过这个方法。
+
+## ChannelInitializer
+
+以下是一个特殊的 `ChannelInboundHandler` 实现，用于在 `Channel` 被注册到其 `EventLoop` 后，便捷地对其进行初始化。通常在 `Bootstrap.handler(ChannelHandler)`、`ServerBootstrap.handler(ChannelHandler)` 和 `ServerBootstrap.childHandler(ChannelHandler)` 等方法中使用，来设置 `Channel` 的 `ChannelPipeline`：
+
+```java
+public class MyChannelInitializer<C extends Channel> extends ChannelInitializer<C> {
+
+    @Override
+    protected void initChannel(C channel) {
+        channel.pipeline().addLast("myHandler", new MyHandler());
+    }
+}
+```
+
+初始化后可以在 `ServerBootstrap` 中使用 `MyChannelInitializer`：
+
+```java
+ServerBootstrap bootstrap = ...;
+...
+bootstrap.childHandler(new MyChannelInitializer<>());
+...
+```
+
+需要注意的是，这个类被标记为 `ChannelHandler.Sharable`，因此实现必须是线程安全的，以便能够被重复使用。
+
+![img](https://cdn.nlark.com/yuque/0/2024/png/35210587/1729918346816-70eb5f2c-5546-43aa-9566-87a66df326ff.png)
+
+当handlerAdd被触发的时候，会初始化Channel并且移除该ChannelHandler
+
+![img](https://cdn.nlark.com/yuque/0/2024/png/35210587/1729918408050-7209e1eb-eabd-40b0-ba7c-af682fbc55b4.png)
+
+此 initChannel 一般情况下我们开发人员编写的
+
+```java
+/**
+ * Echoes back any received data from a client.
+ */
+public final class EchoServer {
+    static final int PORT = Integer.parseInt(System.getProperty("port", "8007"));
+
+    public static void main(String[] args) throws Exception {
+        // Configure the server.
+        //创建主从Reactor线程组
+        EventLoopGroup bossGroup = new NioEventLoopGroup(1);
+        EventLoopGroup workerGroup = new NioEventLoopGroup();
+        final EchoServerHandler serverHandler = new EchoServerHandler();
+        try {
+            ServerBootstrap b = new ServerBootstrap();
+            b.group(bossGroup, workerGroup)//配置主从Reactor
+             .channel(NioServerSocketChannel.class)//配置主Reactor中的channel类型
+             .option(ChannelOption.SO_BACKLOG, 100)//设置主Reactor中channel的option选项
+             .handler(new LoggingHandler(LogLevel.INFO))//设置主Reactor中Channel->pipline->handler
+             .childHandler(new ChannelInitializer<SocketChannel>() {//设置从Reactor中注册channel的pipeline
+                 @Override
+                 public void initChannel(SocketChannel ch) throws Exception {
+                     ChannelPipeline p = ch.pipeline();
+                     //p.addLast(new LoggingHandler(LogLevel.INFO));
+                     p.addLast(serverHandler);
+                 }
+             });
+
+            // Start the server. 绑定端口启动服务，开始监听accept事件
+            ChannelFuture f = b.bind(PORT).sync();
+            // Wait until the server socket is closed.
+            f.channel().closeFuture().sync();
+        } finally {
+            // Shut down all event loops to terminate all threads.
+            bossGroup.shutdownGracefully();
+            workerGroup.shutdownGracefully();
+        }
+    }
+}
+```

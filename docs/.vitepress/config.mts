@@ -2,8 +2,8 @@ import { defineConfig, type DefaultTheme } from "vitepress"
 
 // https://vitepress.dev/reference/site-config
 export default defineConfig({
-  title: "52Netty",
-  description: "www.52netty.com",
+  title: "图解Netty",
+  description: "图解Netty",
   lastUpdated: true,
   markdown: {
     math: true,
@@ -97,7 +97,7 @@ export default defineConfig({
                     link: "/main_task/network_communication_layer/io_model",
                   },
                   {
-                    text: "IO 多路复用的操作系统支持",
+                    text: "IO 多路复用",
                     link: "/main_task/network_communication_layer/io_multiplexing.md",
                   },
                   {
@@ -105,8 +105,8 @@ export default defineConfig({
                     link: "/main_task/network_communication_layer/io_thread_model.md",
                   },
                   {
-                    text: "Java NIO 详解",
-                    link: "/main_task/network_communication_layer/java_nio",
+                    text: "JDK NIO 详解",
+                    link: "/main_task/network_communication_layer/jdk_nio",
                   },
                 ],
               },
@@ -114,7 +114,7 @@ export default defineConfig({
                 text: "启动引导层",
                 items: [
                   {
-                    text: "BootStrap 初始化",
+                    text: "BootStrap 初始化 Netty 服务",
                     link: "/main_task/boot_layer/bootstrap_init.md",
                   },
                   {
@@ -178,37 +178,42 @@ export default defineConfig({
                   },
                 ],
               },
+            ],
+          },
+          {
+            text: "第三部分：内存管理机制",
+            collapsed: true,
+            items: [
               {
-                text: "番外：内存管理机制",
+                text: "Netty 的内存管理机制简介",
+                link: "/memory_management/introduction",
+              },
+              {
+                text: "数据载体",
                 items: [
                   {
-                    text: "数据载体",
-                    items: [
-                      {
-                        text: "ByteBuf",
-                        link: "/main_task/memory_management/data_carrier/ByteBuf.md",
-                      },
-                    ],
+                    text: "ByteBuf",
+                    link: "/memory_management/data_carrier/ByteBuf.md",
+                  },
+                ],
+              },
+              {
+                text: "池化技术",
+                items: [
+                  {
+                    text: "对象池",
+                    link: "/memory_management/pooling_techniques/object_pool.md",
                   },
                   {
-                    text: "池化技术",
-                    items: [
-                      {
-                        text: "对象池",
-                        link: "/main_task/memory_management/pooling_techniques/object_pool.md",
-                      },
-                      {
-                        text: "内存池",
-                        link: "/main_task/memory_management/pooling_techniques/memory_pool.md",
-                      },
-                    ],
+                    text: "内存池",
+                    link: "/memory_management/pooling_techniques/memory_pool.md",
                   },
                 ],
               },
             ],
           },
           {
-            text: "第三部分：其他源码分析",
+            text: "第四部分：其他源码分析",
             collapsed: true,
             items: [
               {
@@ -230,7 +235,7 @@ export default defineConfig({
             ],
           },
           {
-            text: "第四部分：其他特性",
+            text: "第五部分：其他特性",
             collapsed: true,
             items: [
               {

@@ -1,8 +1,10 @@
-# Netty 如何接收网络数据
+# 处理 OP_READ 事件
 
 ## 前言
 
-在前两篇文章[Netty 如何建立网络连接](https://www.yuque.com/onejava/gwzrgm/udg76b6z7ir6ld45)和[Netty 如何接收网络连接](https://www.yuque.com/onejava/gwzrgm/tgcgqew4b8nlpxes)中，我们说明了客户端和服务端如何成功建立一个 TCP 连接。当双方的三次握手结束后，就应该进行消息的收发。因此，本文和[Netty 如何发送网络数据](https://www.yuque.com/onejava/gwzrgm/pcgsgkx5d4hg1u7c) 分别主要讲解消息的接收和发送，这两种 IO 操作主要与 `NioSocketChannel` 相关。
+在前两篇文章[处理 OP_CONNECT 事件](/netty_source_code_parsing/main_task/event_scheduling_layer/io/OP_CONNECT)和[处理 OP_ACCEPT 事件](/netty_source_code_parsing/main_task/event_scheduling_layer/io/OP_ACCEPT)中，我们说明了客户端和服务端如何成功建立一个 TCP 连接。当双方的三次握手结束后，就应该进行消息的收发。
+
+因此，本文和[处理 OP_WRITE 事件](/netty_source_code_parsing/main_task/event_scheduling_layer/io/OP_WRITE) 分别主要讲解网络数据的接收和发送，这两种 IO 操作主要与 `NioSocketChannel` 相关。
 
 `NioServerSocketChannel` 在成功接受客户端连接后，会将该连接生成的新 `NioSocketChannel` 注册到 Sub Reactor，并注册 `OP_READ` 操作。`OP_WRITE` 操作并不会直接被注册，它的注册时机是在“Netty 向 Channel 写入数据时，也就是将用户态缓冲区的数据写入 IO 时，如果出现 TCP 缓冲区满的情况，就无法继续写入，这时就会注册 `OP_WRITE` 事件”。当 `OP_WRITE` 事件产生时，Netty 会将其捕获，然后继续 `flush`（刷新数据）。
 
@@ -12,7 +14,7 @@
 
 ## 1、Sub Reactor 处理 OP_READ 事件流程总览
 
-![image-20241030194152677](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410301941846.png)
+![image-20241031165953082](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410311659254.png)
 
 客户端发起系统 IO 调用，向服务端发送数据后，网络数据会经过网卡，并经过内核协议栈的处理，最终到达 **Socket** 的接收缓冲区。当 **Sub Reactor** 轮询到 `NioSocketChannel` 上的 **OP_READ** 事件就绪时，**Sub Reactor** 线程将从 **JDK Selector** 的阻塞轮询 API `selector.select(timeoutMillis)` 调用中返回，转而处理 `NioSocketChannel` 上的 **OP_READ** 事件。  
 
@@ -64,7 +66,7 @@ public final class NioEventLoop extends SingleThreadEventLoop {
 
 我们直接按照老规矩，先从整体上把整个 OP_READ 事件的逻辑处理框架提取出来，让大家先总体俯视下流程全貌，然后在针对每个核心点位进行各个击破。
 
-![image-20241030200910211](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410302009608.png)
+![image-20241031170318065](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410311703437.png)
 
 流程中相关置灰的步骤为Netty处理连接关闭时的逻辑，和本文主旨无关，我们这里暂时忽略，等后续笔者介绍连接关闭时，会单独开一篇文章详细为大家介绍。
 
@@ -91,7 +93,7 @@ b.group(bossGroup, workerGroup)
 
 在这个模型中，一个 **Channel** 只能分配给一个固定的 **Reactor**。一个 **Reactor** 负责处理多个 **Channel** 上的 IO 就绪事件，**Reactor** 与 **Channel** 之间的对应关系如下图所示：
 
-![image-20241030201633937](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410302016018.png)
+![image-20241030201633937](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410311607161.png)
 
 而在一个 **Sub Reactor** 上注册了多个 `NioSocketChannel` 后，**Netty** 不可能在单个 `NioSocketChannel` 上无限制地处理数据。为了将读取数据的机会均匀分摊给其他 `NioSocketChannel`，因此需要限定每个 `NioSocketChannel` 上的最大读取次数。
 
@@ -139,7 +141,7 @@ public abstract class MaxMessageHandle implements ExtendedHandle {
 - **lastBytesRead = 0**：表示当前 `NioSocketChannel` 上的数据已经全部读取完毕，没有数据可读了。本次 **OP_READ** 事件圆满处理完毕，可以愉快地退出 **read loop**。
 - **lastBytesRead > 0**：表示在本次 **read loop** 中从 `NioSocketChannel` 中读取到了数据。此时会在 `NioSocketChannel` 的 **pipeline** 中触发 **ChannelRead** 事件，进而在 **pipeline** 中负责 IO 处理的 **ChannelHandler** 中响应并处理网络请求。
 
-![image-20241030201816766](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410302018854.png)
+![image-20241031170512440](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410311705508.png)
 
 ```java
 public class EchoServerHandler extends ChannelInboundHandlerAdapter {
@@ -163,7 +165,7 @@ public class EchoServerHandler extends ChannelInboundHandlerAdapter {
 
 最后，在 `NioSocketChannel` 的 **pipeline** 中触发 **ChannelReadComplete** 事件，通知 **ChannelHandler** 本次 **OP_READ** 事件已经处理完毕。
 
-![image-20241030201843396](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410302018472.png)
+![image-20241031170530348](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410311705433.png)
 
 ```java
 public class EchoServerHandler extends ChannelInboundHandlerAdapter {
@@ -202,7 +204,7 @@ Netty 服务端对一次 `OP_READ` 事件的处理，会在一个 `do { ... } wh
 
 经过前边对网络数据接收的核心逻辑介绍，笔者在把这张流程图放出来，大家可以结合这张图在来回想下主干核心逻辑。
 
-![image-20241030201925909](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410302019283.png)
+![image-20241030201925909](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410311703437.png)
 
 下面笔者会结合这张流程图，给大家把这部分的核心主干源码框架展现出来，大家可以将我们介绍过的核心逻辑与主干源码做个一一对应，还是那句老话，我们要从主干框架层面把握整体处理流程，不需要读懂每一行代码，文章后续笔者会将这个过程中涉及到的核心点位给大家拆开来各个击破！！
 
@@ -273,7 +275,7 @@ public final void read() {
 
 首先，通过 `config()` 获取客户端 `NioSocketChannel` 的 Channel 配置类 `NioSocketChannelConfig`。接着，通过 `pipeline()` 获取 `NioSocketChannel` 的 pipeline。在 Netty 服务端模板 EchoServer  所举的示例中，`NioSocketChannel` 的 pipeline 中只有一个 `EchoChannelHandler`。
 
-![image-20241030202040334](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410302020389.png)
+![image-20241031165026880](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410311650961.png)
 
 ### 3.1、分配 DirectByteBuffer 接收网络数据
 

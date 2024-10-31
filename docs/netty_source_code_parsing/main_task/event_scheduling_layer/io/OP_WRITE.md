@@ -1,8 +1,8 @@
-# Netty 如何发送网络数据
+# 处理 OP_WRITE 事件
 
 ## 前言
 
-在[Netty 如何接收网络数据](https://www.yuque.com/onejava/gwzrgm/hxu3hq49zi0eb0gu)一文中，我们介绍了 **Netty** 的 **SubReactor** 处理网络数据读取的完整过程。当 **Netty** 为我们读取了网络请求数据，并且我们在自己的业务线程中完成了业务处理后，就需要将业务处理结果返回给客户端。那么本文将介绍 **SubReactor** 如何处理网络数据发送的整个过程。
+在[处理 OP_READ 事件](/netty_source_code_parsing/main_task/event_scheduling_layer/io/OP_READ)一文中，我们介绍了 **Netty** 的 **SubReactor** 处理网络数据读取的完整过程。当 **Netty** 为我们读取了网络请求数据，并且我们在自己的业务线程中完成了业务处理后，就需要将业务处理结果返回给客户端。那么本文将介绍 **SubReactor** 如何处理网络数据发送的整个过程。
 
 我们都知道 **Netty** 是一款高性能的异步事件驱动的网络通讯框架，既然是网络通讯框架，那么它主要做的事情就是：
 
@@ -32,7 +32,7 @@ public class EchoServerHandler extends ChannelInboundHandlerAdapter {
 }
 ```
 
-我们将在[《Netty如何高效接收网络数据》](https://mp.weixin.qq.com/s?__biz=Mzg2MzU3Mjc3Ng==&mid=2247484244&idx=1&sn=831060fc38caa201d69f87305de7f86a&chksm=ce77c513f9004c05b48f849ff99997d6d7252453135ae856a029137b88aa70b8e046013d596e&scene=21#wechat_redirect)一文中读取到的 ByteBuffer (这里的 Object msg)，直接发送回给客户端，用这个简单的例子来揭开 Netty 如何发送数据的序幕~~
+我们在[处理 OP_READ 事件](/netty_source_code_parsing/main_task/event_scheduling_layer/io/OP_READ)一文中读取到的 ByteBuffer (这里的 Object msg)，直接发送回给客户端，用这个简单的例子来揭开 Netty 如何发送数据的序幕~~
 
 在实际开发中，我们首先要通过解码器将读取到的 ByteBuffer 解码转换为我们的业务 Request 类，然后在业务线程中做业务处理，在通过编码器对业务 Response 类编码为 ByteBuffer ，最后利用 ChannelHandlerContext ctx 的引用发送响应数据。
 
@@ -42,7 +42,7 @@ public class EchoServerHandler extends ChannelInboundHandlerAdapter {
 
 ## 1、ChannelHandlerContext
 
-![image-20241030203455957](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410302034027.png)
+![image-20241031170917402](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410311709468.png)
 
 通过前面几篇文章的介绍，我们知道 **Netty** 会为每个 **Channel** 分配一个 **pipeline**，该 **pipeline** 是一个双向链表的结构。**Netty** 中产生的 **IO** 异步事件会在这个 **pipeline** 中传播。
 
@@ -79,7 +79,7 @@ ChannelHandler 在 Netty 中的作用只是负责处理 IO 逻辑，比如编码
 - `channelHandlerContext.write()` 方法会从当前 **ChannelHandler** 开始在 **pipeline** 中向前传播 **write** 事件，直到 **HeadContext**。
 - `channelHandlerContext.channel().write()` 方法则会从 **pipeline** 的尾结点 **TailContext** 开始向前传播 **write** 事件，直到 **HeadContext**。
 
-![image-20241030203736335](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410302037415.png)
+![image-20241031173204745](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410311732837.png)
 
 在我们清楚了 write 事件的总体传播流程后，接下来就来看看在 write 事件传播的过程中Netty为我们作了些什么？这里我们以 channelHandlerContext.write() 方法为例说明。
 
@@ -166,9 +166,7 @@ private void write(Object msg, boolean flush, ChannelPromise promise) {
 
 write 事件要向前在 pipeline 中传播，就需要在 pipeline 上找到下一个具有执行资格的 ChannelHandler，因为位于当前 ChannelHandler 前边的可能是 ChannelInboundHandler 类型的也可能是 ChannelOutboundHandler 类型的 ChannelHandler ，或者有可能压根就不关心 write 事件的 ChannelHandler（没有实现write回调方法）。
 
-
-
-![img](https://cdn.nlark.com/yuque/0/2024/png/35210587/1729685778616-cf7bf4ce-ec87-4052-8c0f-e4c48f6aea24.png)
+![image-20241031174147729](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410311741849.png)
 
  在这里，我们需要使用 `findContextOutbound` 方法，在当前 `ChannelHandler` 前的链路中查找一个类型为 `ChannelOutboundHandler` 的处理器，并确保其覆盖实现了 `write` 回调方法。找到后，该 `ChannelHandler` 将作为下一个执行对象。   
 
@@ -395,9 +393,7 @@ EventExecutor executor = next.executor()
 
 大家还记得pipeline中的结构吗？
 
-
-
-![img](https://cdn.nlark.com/yuque/0/2024/png/35210587/1729692819282-af15d048-e7d6-4299-8393-21bc7ad7870b.png)
+![image-20241031174210480](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410311742560.png)
 
 
 
@@ -411,11 +407,11 @@ EventExecutor executor = next.executor()
 
 所以最终在 netty 内核中执行写操作的线程一定是 reactor 线程从而保证了线程安全性。
 
-忘记这段内容的同学可以在回顾下[?《Reactor在Netty中的实现(创建篇)》](https://mp.weixin.qq.com/s?__biz=Mzg2MzU3Mjc3Ng==&mid=2247483907&idx=1&sn=084c470a8fe6234c2c9461b5f713ff30&chksm=ce77c444f9004d52e7c6244bee83479070effb0bc59236df071f4d62e91e25f01715fca53696&scene=21#wechat_redirect)，类似的套路我们在介绍 NioServerSocketChannel 进行 bind 绑定以及 register 注册的时候都介绍过，只不过这里将 executor 扩展到了自定义线程池的范围。
+忘记这段内容的同学可以在回顾下[BootStrap 初始化](/netty_source_code_parsing/main_task/boot_layer/bootstrap_init)，类似的套路我们在介绍 NioServerSocketChannel 进行 bind 绑定以及 register 注册的时候都介绍过，只不过这里将 executor 扩展到了自定义线程池的范围。
 
 #### 3.1.5、触发 nextChannelHandler 的 write 方法回调
 
-![img](https://cdn.nlark.com/yuque/0/2024/png/35210587/1729692944085-1e56bf08-c32a-45cf-a86f-9466f0f1393b.png)
+![image-20241031174347213](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410311743334.png)
 
 ```java
 //如果当前线程是指定的 executor 则直接操作
@@ -478,7 +474,7 @@ private void invokeWrite0(Object msg, ChannelPromise promise) {
 
 这里我们看到在 write 事件的传播过程中如果发生异常，那么 write 事件就会停止在 pipeline 中传播，并通知注册的 ChannelFutureListener。
 
-![img](https://cdn.nlark.com/yuque/0/2024/png/35210587/1729693291850-a397a0b8-3a0d-49e2-9c74-c5f1e0e42956.png)
+![image-20241031174210480](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410311742560.png)
 
  从本文示例的 `pipeline` 结构中可以看出，当在 `EchoServerHandler` 中调用 `ChannelHandlerContext#write` 方法后，`write` 事件会在 `pipeline` 中向前传播至 `HeadContext`。在 `HeadContext` 中，Netty 才会真正处理 `write` 事件。  
 
@@ -497,7 +493,7 @@ final class HeadContext extends AbstractChannelHandlerContext
 
 `write` 事件最终会在 `pipeline` 中传播到 `HeadContext`，并回调 `HeadContext` 的 `write` 方法。在这个回调中，会调用 `channel` 的 `Unsafe` 类以执行底层的 `write` 操作。这正是 `write` 事件在 `pipeline` 中传播的终点。  
 
-![img](https://cdn.nlark.com/yuque/0/2024/png/35210587/1729693390915-1f782e58-810c-4945-803a-58ac37d07a48.png)
+![image-20241031180100928](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410311801283.png)
 
 ```java
 protected abstract class AbstractUnsafe implements Unsafe {
@@ -635,7 +631,7 @@ public final class DefaultMessageSizeEstimator implements MessageSizeEstimator {
 
 这三个指针在初始化时均为 `null`。
 
-![img](https://cdn.nlark.com/yuque/0/2024/png/35210587/1729693765008-434270fa-bc44-4cfb-a068-80df8e9b1d25.png)
+![image-20241031181419963](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410311814063.png)
 
 #### 3.3.1、Entry
 
@@ -696,7 +692,7 @@ static final class Entry {
 - - Entry对象中所封装的待发送网络数据大小。
   - Entry对象本身在内存中的占用量。
 
-![img](https://cdn.nlark.com/yuque/0/2024/png/35210587/1729694101339-c2855854-7f9f-40c5-8baa-7b63c9ac4533.png)
+![image-20241031181427134](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410311814323.png)
 
 #### 3.3.2、pendingSize 的作用
 
@@ -837,7 +833,7 @@ static final class Entry {
 
 **开启指针压缩 -XX:+UseCompressedOops**
 
-![img](https://cdn.nlark.com/yuque/0/2024/png/35210587/1729694386193-251277b3-087e-4aa7-b5d1-62d740b03880.png)
+![image-20241031181435955](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410311814042.png)
 
 Entry 对象的内存布局中开头先是 8 个字节的 MarkWord，然后是 4 个字节的类型指针（开启压缩指针）。
 
@@ -861,7 +857,7 @@ Entry 对象的内存布局中开头先是 8 个字节的 MarkWord，然后是 4
 
 在分析完 Entry 对象在开启压缩指针情况下的内存布局情况后，我想大家现在对前边介绍的字段重排列的三个规则理解更加清晰了，那么我们基于这个基础来分析下在关闭压缩指针的情况下 Entry 对象的内存布局。
 
-![img](https://cdn.nlark.com/yuque/0/2024/png/35210587/1729694403511-7ccd4438-79b2-411a-b849-58efe943929c.png)
+![image-20241031181441106](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410311934791.png)
 
 首先 Entry 对象在内存布局中的开头依然是由 8 个字节的 MarkWord 还有 8 个字节的类型指针（关闭压缩指针）组成的对象头。
 
@@ -976,7 +972,7 @@ if (unflushedEntry == null) {
 
 如果更新后的水位线超过了 Netty 指定的高水位线 `DEFAULT_HIGH_WATER_MARK = 64 * 1024`，则需要将当前 Channel 的状态设置为不可写，并在 pipeline 中传播 ChannelWritabilityChanged 事件，注意该事件是一个 inbound 事件。
 
-![img](https://cdn.nlark.com/yuque/0/2024/png/35210587/1729694665914-5a333704-2705-45c1-a556-b2baf6eb8eca.png)
+![](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410311814323.png)
 
 ```java
 public final class ChannelOutboundBuffer {
@@ -1102,8 +1098,6 @@ public class EchoServerHandler extends ChannelInboundHandlerAdapter {
 
 ### 4.1、flush 事件的传播
 
-![img](https://cdn.nlark.com/yuque/0/2024/png/35210587/1729694956527-3641951c-0b61-4a82-bda5-f981828c0de9.png)
-
 **Flush 事件** 和 **Write 事件** 一样，都是 outbound 事件，因此它们在 **pipeline** 中的传播方向都是从后往前。
 
 触发 **flush** 事件传播的方式有两种：
@@ -1194,7 +1188,7 @@ private void invokeExceptionCaught(final Throwable cause) {
 
 ### 4.2、flush事件的处理
 
-![img](https://cdn.nlark.com/yuque/0/2024/png/35210587/1729695202694-5b7693de-405e-4a15-84f0-0f090e1327c6.png)
+![image-20241031174210480](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410311742560.png)
 
 最终 flush 事件会在 pipeline 中一直向前传播至 HeadContext 中，并在 HeadContext 里调用 channel 的 unsafe 类完成 flush 事件的最终处理逻辑。
 
@@ -1612,7 +1606,7 @@ ServerBootstrap b = new ServerBootstrap();
 
 ### 5.2、向 JDK NIO SocketChannel 发送数据
 
-![img](https://cdn.nlark.com/yuque/0/2024/png/35210587/1729697746852-c13fa437-482d-4298-afd8-04eb80c282ce.png)
+![image-20241031181631089](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410311816248.png)
 
 ```java
 @Override
@@ -1881,7 +1875,7 @@ private void adjustMaxBytesPerGatheringWrite(int attempted, int written, int old
 - **减少下次写入量**
   如果本次写入的数据量不足尝试写入数据的 1/2，即 `written < attempted >>> 1`，则表明当前 Socket 写缓冲区的可写容量已接近上限。此时，下次写循环应减少写入量，将下次写入的数据量减小为 `attempted` 的 1/2。不过，减少的量不能无限制下降，最小值不得低于 `2048`。
 
-这里可以结合笔者前边的文章[?《一文聊透ByteBuffer动态自适应扩缩容机制》](https://mp.weixin.qq.com/s?__biz=Mzg2MzU3Mjc3Ng==&mid=2247484244&idx=1&sn=831060fc38caa201d69f87305de7f86a&chksm=ce77c513f9004c05b48f849ff99997d6d7252453135ae856a029137b88aa70b8e046013d596e&scene=21#wechat_redirect)中介绍到的 read loop 场景中的扩缩容一起对比着看。
+这里可以结合笔者的文章[ByteBuf](/memory_management/data_carrier/ByteBuf)中介绍到的 read loop 场景中的扩缩容一起对比着看。
 
 read loop 中的扩缩容触发时机是在一个完整的 read loop 结束时候触发。而 write loop 中扩缩容的触发时机是在每次 write loop 发送完数据后，立即触发扩缩容判断。
 

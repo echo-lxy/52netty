@@ -188,11 +188,11 @@ public interface ChannelPipeline
 1. `ChannelInboundInvoker` 发送的入站事件，会直接通过管道管理的 `ChannelInboundHandler` 列表从头到尾的触发，采用拦截器模式，由 `ChannelInboundHandler` 决定是否继续调用下一个 `ChannelInboundHandler` 处理。
 2. `ChannelOutboundInvoker` 发送的出站事件，会直接通过管道管理的 `ChannelOutboundHandler` 列表从尾到头的触发，采用拦截器模式，由 `ChannelOutboundHandler` 决定是否继续调用下一个 `ChannelOutboundHandler` 处理。
 
-## 管理 `ChannelHandler`
+### 管理 `ChannelHandler`
 
 通过 AbstractChannelHandlerContext 的分析，我们知道其实管道ChannelPipeline 是通过双向链表来存储任务处理器的上下文列表的。
 
-### 双向链表
+#### 双向链表
 
 ```java
 final AbstractChannelHandlerContext head;
@@ -215,7 +215,7 @@ protected DefaultChannelPipeline(Channel channel) {
 
 头尾节点在 ChannelHandlerContext【TODO】中有讲解
 
-### 添加
+#### 添加
 
 > 添加到管道 `ChannelPipeline`的`ChannelHandler`都要有一个名字，可以根据这个名字在管道中查找到这个`ChannelHandler`。
 
@@ -249,334 +249,9 @@ ChannelPipeline addLast(EventExecutorGroup group, ChannelHandler... handlers);
 > - 这就要求 `ChannelHandler`不能有太耗时操作，尤其是不能有阻塞操作，这样会导致整个事件轮询器被阻塞，会影响注册到这个事件轮询器所有通道的`IO` 事件处理，以及这个事件轮询器包含的所有待执行任务和计划任务。
 > - 但是我们真的有这个方面的需求怎么办呢? 因此 `ChannelPipeline` 提供了多一个 `EventExecutorGroup` 参数的方法，它会将添加的这个 `ChannelHandler` 的所有方法都放在指定的这个事件执行器组`EventExecutorGroup`中执行，这样就不会阻塞通道 `Channel` 对应的事件轮询器。
 
-#### 添加单个
+#### 删除
 
-```Java
-    @Override
-    public final ChannelPipeline addFirst(String n ame, ChannelHandler handler) {
-        return addFirst(null, name, handler);
-    }
-
-    @Override
-    public final ChannelPipeline addFirst(EventExecutorGroup group, String name, ChannelHandler handler) {
-        final AbstractChannelHandlerContext newCtx;
-        // 使用synchronized锁，防止并发问题
-        synchronized (this) {
-            // 检查这个 handler 有没有重复
-            checkMultiplicity(handler);
-            // 过滤name，如果当前管道中已经存在这个名字的 ChannelHandler，
-            // 直接抛出异常
-            name = filterName(name, handler);
-
-            // 创建这个事件处理器ChannelHandler对应的上下文对象
-            newCtx = newContext(group, name, handler);
-
-            // 将这个上下文对象添加到管道中
-            // 因为是用双向链表存储的，所以就是改变链表节点的 next 和 prev指向
-            addFirst0(newCtx);
-
-            // 如果 registered == false，则表示该通道还没有在eventLoop上注册。
-            // 因此我们将上下文的状态设置成正在添加状态，
-            // 并添加一个任务，该任务将在通道注册后就会调用 ChannelHandler.handlerAdded(...)。
-            if (!registered) {
-                newCtx.setAddPending();
-                callHandlerCallbackLater(newCtx, true);
-                return this;
-            }
-
-            EventExecutor executor = newCtx.executor();
-            if (!executor.inEventLoop()) {
-                // 如果当前线程不是新创建上下文的执行器线程，
-               // 那么使用executor.execute 方法，保证在执行器线程调用 callHandlerAdded0 方法
-                callHandlerAddedInEventLoop(newCtx, executor);
-                return this;
-            }
-        }
-        // 将新创建上下文状态变成已添加，且调用 ChannelHandler.handlerAdded(...)方法
-        callHandlerAdded0(newCtx);
-        return this;
-    }
-```
-
-方法流程分析：
-
-1. 因为添加 `ChannelHandler` 会在任何线程调用，所以使用 `synchronized` 锁来防止并发修改问题。
-
-2. 通过 `checkMultiplicity(handler)`  方法检查这个 `handler` 有没有重复。
-
-3. 通过 `filterName(name, handler)` 方法判断这个名字在当前管道中是否重复。
-
-4. 通过 `newContext(group, name, handler)` 创建这个事件处理器`ChannelHandler`对应的上下文对象。
-
-5. 通过 `addFirst0(newCtx)` 方法将新建上下文对象添加到管道中。
-
-6. 下面就是关于新建上下文状态和
-
-   ```
-   ChannelHandler.handlerAdded(...)
-   ```
-
-    方法调用问题的处理，分为几种情况:
-
-   > - 当管道对应的通道还没有注册到 `eventLoop`, 那么`handlerAdded(...)` 现在还不能被调用；那就先将上下文状态变成 `ADD_PENDING`,并添加一个任务，保证当通道添加之后，再将状态变成 `ADD_COMPLETE` 且调用`handlerAdded(...)` 方法。
-   > - 当前线程不是新创建上下文执行器线程，那么也是先将上下文状态变成 `ADD_PENDING`, 并在上下文执行器线程中调用 `callHandlerAdded0` 方法。
-   > - 不是上面情况，直接调用`callHandlerAdded0` 方法，将状态变成 `ADD_COMPLETE` 且调用`handlerAdded(...)` 方法。
-
-#### 添加多个
-
-```Java
-@Override
-public final ChannelPipeline addFirst(ChannelHandler... handlers) {
-    return addFirst(null, handlers);
-}
-
-@Override
-public final ChannelPipeline addFirst(EventExecutorGroup executor, ChannelHandler... handlers) {
-    ObjectUtil.checkNotNull(handlers, "handlers");
-    // 如果 handlers 为空，那么不用添加，直接返回
-    if (handlers.length == 0 || handlers[0] == null) {
-        return this;
-    }
-
-    int size;
-    for (size = 1; size < handlers.length; size ++) {
-        // 如果有 ChannelHandler 是 null，那么后面的就不用添加了
-        if (handlers[size] == null) {
-            break;
-        }
-    }
-
-    // 倒序遍历，保证添加的顺序
-    for (int i = size - 1; i >= 0; i --) {
-        ChannelHandler h = handlers[i];
-        // 直接调用 addFirst 方法添加
-        addFirst(executor, null, h);
-    }
-
-    return this;
-}
-```
-
-> 通过倒序循环遍历，调用单个添加方法，来实现一次添加多个。
-
-#### 辅助方法
-
-1. `checkMultiplicity(...)`
-
-   ```java
-    private static void checkMultiplicity(ChannelHandler handler) {
-        if (handler instanceof ChannelHandlerAdapter) {
-            // 如果是 ChannelHandlerAdapter 的子类
-            ChannelHandlerAdapter h = (ChannelHandlerAdapter) handler;
-            // 只有 ChannelHandler 是可共享的，才能多次添加，
-            // 否则 handler 已被添加(h.added == true) 的情况下，直接抛出异常
-            if (!h.isSharable() && h.added) {
-                throw new ChannelPipelineException(
-                        h.getClass().getName() +
-                        " is not a @Sharable handler, so can't be added or removed multiple times.");
-            }
-            h.added = true;
-        }
-    }
-   ```
-
-   > 检查 `ChannelHandler` 是否重复
-   > 只有被 `@Sharable` 注解的`ChannelHandler` 才可以多次添加到一个或多个管道 `ChannelPipeline`。
-
-2. `filterName(...)`
-
-   ```tsx
-    private String filterName(String name, ChannelHandler handler) {
-        if (name == null) {
-            // 通过 ChannelHandler 生成一个名字
-            return generateName(handler);
-        }
-        // 检查是否重复
-        checkDuplicateName(name);
-        return name;
-    }
-   
-    private void checkDuplicateName(String name) {
-        // 通过 context0(name) 方法，看这个名字能否在管道中找到对应的上下文
-        if (context0(name) != null) {
-            throw new IllegalArgumentException("Duplicate handler name: " + name);
-        }
-    }
-   ```
-
-3. `newContext(...)`
-
-   ```csharp
-     private AbstractChannelHandlerContext newContext(EventExecutorGroup group, String name, ChannelHandler handler) {
-        return new DefaultChannelHandlerContext(this, childExecutor(group), name, handler);
-    }
-   
-     private EventExecutor childExecutor(EventExecutorGroup group) {
-        if (group == null) {
-            return null;
-        }
-        Boolean pinEventExecutor = channel.config().getOption(ChannelOption.SINGLE_EVENTEXECUTOR_PER_GROUP);
-        if (pinEventExecutor != null && !pinEventExecutor) {
-            return group.next();
-        }
-        Map<EventExecutorGroup, EventExecutor> childExecutors = this.childExecutors;
-        if (childExecutors == null) {
-            // 使用4的大小，因为大多数情况下只使用一个额外的 EventExecutor。
-            childExecutors = this.childExecutors = new IdentityHashMap<EventExecutorGroup, EventExecutor>(4);
-        }
-        // 虽然一个事件处理器组 EventExecutorGroup 中管理有多个子事件处理器 EventExecutor，
-        // 但是对于同一个通道 Channel 应该使用同一个子事件处理器 EventExecutor，
-        // 以便使用相同的子执行器触发相同通道的事件。
-        EventExecutor childExecutor = childExecutors.get(group);
-        // 如果 childExecutor 不为null，直接返回 childExecutor，使用同个子事件处理器
-        if (childExecutor == null) {
-            // 没有，则从事件处理器组中获取一个子事件处理器。
-            childExecutor = group.next();
-            // 记录它，保证同一个管道是同一个子事件处理器。
-            childExecutors.put(group, childExecutor);
-        }
-        return childExecutor;
-    }
-   ```
-
-   > - 直接创建事件处理器`ChannelHandler` 对应的上下文。
-   > - `childExecutor(group)` 保证同一个管道添加的子事件执行器 `EventExecutor` 是同一个。
-
-4. `addFirst0(...)`
-
-   ```cpp
-    private void addFirst0(AbstractChannelHandlerContext newCtx) {
-        AbstractChannelHandlerContext nextCtx = head.next;
-        newCtx.prev = head;
-        newCtx.next = nextCtx;
-        head.next = newCtx;
-        nextCtx.prev = newCtx;
-    }
-   ```
-
-   > 因为是双向链表，所以插入一个节点，是要改变当前插入位置前节点的 `next` 和后节点的 `prev`,以及这个插入节点的`next` 和 `prev`。
-
-### 删除
-
-```Java
-ChannelPipeline remove(ChannelHandler handler);
-
-ChannelHandler remove(String name);
-
-<T extends ChannelHandler> T remove(Class<T> handlerType);
-
-ChannelHandler removeFirst();
-
-ChannelHandler removeLast();
-```
-
-> - 直接从管道中删除指定的 `ChannelHandler` 对象
-> - 从管道删除指定名称`name`或者指定类型`handlerType` 的 `ChannelHandler` 对象，并返回它。
-> - 删除管道头或者尾的`ChannelHandler` 对象，并返回它。
-
-我们深入俺看`ChannelPipeline remove(ChannelHandler handler);`
-
-```java
-@Override
-public final ChannelPipeline remove(ChannelHandler handler) {
-    // 通过 getContextOrDie 得到对应的上下文
-    remove(getContextOrDie(handler));
-    return this;
-}
-
-@Override
-public final ChannelHandler remove(String name) {
-    // 通过 getContextOrDie 得到对应的上下文
-    return remove(getContextOrDie(name)).handler();
-}
-
-@SuppressWarnings("unchecked")
-@Override
-public final <T extends ChannelHandler> T remove(Class<T> handlerType) {
-    // 通过 getContextOrDie 得到对应的上下文
-    return (T) remove(getContextOrDie(handlerType)).handler();
-}
-
-private AbstractChannelHandlerContext remove(final AbstractChannelHandlerContext ctx) {
-    // head 和 tail 比较特殊，不是用户定义的，
-    // 所以它也不能被删除
-    assert ctx != head && ctx != tail;
-
-    // 使用synchronized锁，防止并发问题
-    synchronized (this) {
-        // 从管道中删除这个上下文 ctx
-        atomicRemoveFromHandlerList(ctx);
-
-        // 如果 registered == false，则表示该通道还没有在eventLoop上注册。
-        // 在本例中我们从管道中移除上下文，
-        // 并添加一个任务，该任务将在通道注册后调用 ChannelHandler.handlerRemoved(...)。
-        if (!registered) {
-            callHandlerCallbackLater(ctx, false);
-            return ctx;
-        }
-
-        EventExecutor executor = ctx.executor();
-        if (!executor.inEventLoop()) {
-            // 如果当前线程不是新创建上下文的执行器线程，
-            // 那么使用executor.execute 方法，保证在执行器线程调用 callHandlerRemoved0 方法
-            executor.execute(new Runnable() {
-                @Override
-                public void run() {
-                    callHandlerRemoved0(ctx);
-                }
-            });
-            return ctx;
-        }
-    }
-    // 将新创建上下文状态变成 REMOVE_COMPLETE，
-    // 且调用 ChannelHandler.handlerRemoved(...)方法
-    callHandlerRemoved0(ctx);
-    return ctx;
-}
-```
-
-> - 删除的方法流程比添加简单，因为删除不需要进行重复性判断，以及创建上下文对象。
-> - 只需要从管道中得到要删除的上下文对象，通过`atomicRemoveFromHandlerList` 方法从管道中删除。
-> - 然后在修改上下文状态，并调用 `ChannelHandler.handlerRemoved(...)`。
-
-```php
-private AbstractChannelHandlerContext getContextOrDie(String name) {
-    // 如果 context() 方法对应的上下文
-    AbstractChannelHandlerContext ctx = (AbstractChannelHandlerContext) context(name);
-    if (ctx == null) {
-        // 如果为空，抛出异常
-        throw new NoSuchElementException(name);
-    } else {
-        return ctx;
-    }
-}
-
-private AbstractChannelHandlerContext getContextOrDie(ChannelHandler handler) {
-    // 如果 context() 方法对应的上下文
-    AbstractChannelHandlerContext ctx = (AbstractChannelHandlerContext) context(handler);
-    if (ctx == null) {
-        // 如果为空，抛出异常
-        throw new NoSuchElementException(handler.getClass().getName());
-    } else {
-        return ctx;
-    }
-}
-
-private AbstractChannelHandlerContext getContextOrDie(Class<? extends ChannelHandler> handlerType) {
-    // 如果 context() 方法对应的上下文
-    AbstractChannelHandlerContext ctx = (AbstractChannelHandlerContext) context(handlerType);
-    if (ctx == null) {
-        // 如果为空，抛出异常
-        throw new NoSuchElementException(handlerType.getName());
-    } else {
-        return ctx;
-    }
-}
-```
-
-
-
-### 替换
+#### 替换
 
 ```Java
 ChannelPipeline replace(ChannelHandler oldHandler, String newName, ChannelHandler newHandler);
@@ -680,7 +355,7 @@ private ChannelHandler replace(
 > - 通过 `replace0(ctx, newCtx)` 方法，用新的上下文替换老的上下文。
 > - 最后改变改变新老上下文的状态，而且必须先将新的上下文状态变成 `ADD_COMPLETE`， 然后再将老的上下文状态变成 `REMOVE_COMPLETE`。
 
-### 查找
+#### 查找
 
 ```Java
 ChannelHandler get(String name);
@@ -758,7 +433,7 @@ private AbstractChannelHandlerContext context0(String name) {
 
 > 都是从双向链表头开始遍历，找到了就返回这个上下文，如果遍历到最后都没有找到，就返回 `null`。
 
-### 其他
+#### 其他
 
 ```Java
 ChannelHandler first();
@@ -775,110 +450,17 @@ Map<String, ChannelHandler> toMap();
 > - 获取管道拥有的 `ChannelHandler` 名称的列表。
 > - 获取此管道拥有的 `ChannelHandler` 集合。
 
-## 拦截 `IO` 事件
+### 拦截 `IO` 事件
 
-### 拦截入站 `IO` 事件
+【TODO】在IO事件以一文中会详细讲解
 
-```kotlin
-@Override
-public final ChannelPipeline fireChannelRegistered() {
-    // 从链表头节点 head 开始处理 入站IO事件
-    AbstractChannelHandlerContext.invokeChannelRegistered(head);
-    return this;
-}
 
-@Override
-public final ChannelPipeline fireChannelUnregistered() {
-    // 从链表头节点 head 开始处理 入站IO事件
-    AbstractChannelHandlerContext.invokeChannelUnregistered(head);
-    return this;
-}
-@Override
-public final ChannelPipeline fireChannelActive() {
-    // 从链表头节点 head 开始处理 入站IO事件
-    AbstractChannelHandlerContext.invokeChannelActive(head);
-    return this;
-}
 
-@Override
-public final ChannelPipeline fireChannelInactive() {
-    // 从链表头节点 head 开始处理 入站IO事件
-    AbstractChannelHandlerContext.invokeChannelInactive(head);
-    return this;
-}
+## 核心行为
 
-@Override
-public final ChannelPipeline fireExceptionCaught(Throwable cause) {
-    // 从链表头节点 head 开始处理 入站IO事件
-    AbstractChannelHandlerContext.invokeExceptionCaught(head, cause);
-    return this;
-}
+### 构造方法
 
-@Override
-public final ChannelPipeline fireUserEventTriggered(Object event) {
-    // 从链表头节点 head 开始处理 入站IO事件
-    AbstractChannelHandlerContext.invokeUserEventTriggered(head, event);
-    return this;
-}
-
-@Override
-public final ChannelPipeline fireChannelRead(Object msg) {
-    // 从链表头节点 head 开始处理 入站IO事件
-    AbstractChannelHandlerContext.invokeChannelRead(head, msg);
-    return this;
-}
-
-@Override
-public final ChannelPipeline fireChannelReadComplete() {
-    // 从链表头节点 head 开始处理 入站IO事件
-    AbstractChannelHandlerContext.invokeChannelReadComplete(head);
-    return this;
-}
-
-@Override
-public final ChannelPipeline fireChannelWritabilityChanged() {
-    // 从链表头节点 head 开始处理 入站IO事件
-    AbstractChannelHandlerContext.invokeChannelWritabilityChanged(head);
-    return this;
-}
-```
-
-> 从链表头节点 `head` 开始处理 入站`IO`事件
-
-### 拦截出站 `IO` 操作
-
-```java
-@Override
-public final ChannelFuture bind(SocketAddress localAddress) {
-    // 从链表尾节点 tail 开始处理 出站`IO`操作
-    return tail.bind(localAddress);
-}
-
-@Override
-public final ChannelFuture connect(SocketAddress remoteAddress) {
-    // 从链表尾节点 tail 开始处理 出站`IO`操作
-    return tail.connect(remoteAddress);
-}
-
-@Override
-public final ChannelFuture connect(SocketAddress remoteAddress, SocketAddress localAddress) {
-    // 从链表尾节点 tail 开始处理 出站`IO`操作
-    return tail.connect(remoteAddress, localAddress);
-}
-
-@Override
-public final ChannelFuture disconnect() {
-    // 从链表尾节点 tail 开始处理 出站`IO`操作
-    return tail.disconnect();
-}
-........
-```
-
-> 从链表尾节点`tail`开始处理 出站 `IO` 操作
-
-## Pipeline 的创建
-
-![image-20241030212134454](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410302121732.png)
+![image-20241031192538897](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410311925136.png)
 
 
 
@@ -941,15 +523,9 @@ public class DefaultChannelPipeline implements ChannelPipeline {
 
 在前边的系列文章中笔者多次提到过，pipeline 的结构是由 ChannelHandlerContext 类型的节点构成的双向链表。其中头结点为 HeadContext ，尾结点为 TailContext 。其初始结构如下
 
-![image-20241030212844785](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410302128865.png)
+![image-20241031192717093](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410311927150.png)
 
-
-
-
-
-
-
-## 通过 ChannelInitializer 向 pipeline 添加 channelHandler
+### 通过 ChannelInitializer 向 pipeline 添加 channelHandler
 
 在我们详细介绍了全部的 inbound 类事件和 outbound 类事件的掩码表示以及事件的触发和传播路径后，相信大家现在可以通过 ChannelInboundHandler 和 ChannelOutboundHandler 来根据具体的业务场景选择合适的 ChannelHandler 类型以及监听合适的事件来完成业务需求了。
 
@@ -1111,7 +687,7 @@ ServerBootstrap b = new ServerBootstrap();
 
 EchoServerHandler 为我们自定义的 ChannelHandler ，它被 @Sharable 注解标注，全局只有一个实例，被添加进多个 Channel 的 pipeline 中。从而会被多个 reactor 线程执行到。
 
-![img](https://cdn.nlark.com/yuque/0/2024/png/35210587/1729747408946-f6631276-ebd7-4a72-8963-2ccd82ab31f4.png)
+![image-20241031193319618](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410311933766.png)
 
 1. 为 ChannelHandler 创建其 ChannelHandlerContext ，用于封装 ChannelHandler 的名称，状态信息，执行上下文信息，以及用于感知 ChannelHandler 在 pipeline 中的位置信息。newContext 方法涉及的细节较多，后面我们单独介绍。
 2. 通过 addLast0 将新创建出来的 ChannelHandlerContext 插入到 pipeline 中末尾处。方法的逻辑很简单其实就是一个普通的双向链表插入操作。
@@ -1128,7 +704,7 @@ private void addLast0(AbstractChannelHandlerContext newCtx) {
 
 **但是这里大家需要注意的点是：**虽然此时 ChannelHandlerContext 被物理的插入到了 pipeline 中，但是此时 channelHandler 的状态依然为 INIT 状态，从逻辑上来说并未算是真正的插入到 pipeline 中，需要等到 ChannelHandler 的 handlerAdded 方法被回调时，状态才变为 ADD_COMPLETE ，而只有 ADD_COMPLETE 状态的 ChannelHandler 才能响应 pipeline 中传播的事件。
 
-![img](https://cdn.nlark.com/yuque/0/2024/png/35210587/1729747565906-02a4d5b7-281b-460a-ad93-5e4ea5f47535.png)
+![img](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410311943799.png)
 
 
 
@@ -1225,7 +801,7 @@ private void callHandlerAdded0(final AbstractChannelHandlerContext ctx) {
 }
 ```
 
-![img](https://cdn.nlark.com/yuque/0/2024/png/35210587/1729747850477-d8551d29-1bf5-4214-8a43-e5e81db8190d.png)
+![image-20241031194322237](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410311943047.png)
 
 1. 除了 ChannelInitializer 这个特殊的 ChannelHandler 的添加是在 channel 向 reactor 注册之前外，剩下的这些用户自定义的 ChannelHandler 的添加，均是在 channel 向 reactor 注册之后被添加进 pipeline 的。这种场景下的处理就会变得比较简单，在 ChannelHandler 被插入到 pipeline 中之后，就会立即回调该 ChannelHandler 的 handlerAdded 方法。**但是需要确保 handlerAdded 方法的回调在 channel 指定的 executor 中进行。**
 
@@ -1265,7 +841,7 @@ final void callHandlerAdded() throws Exception {
 }
 ```
 
-## 从 pipeline 删除 channelHandler
+### 删除 ChannelHandler
 
 从上个小节的内容中我们可以看到向 pipeline 中添加 ChannelHandler 的逻辑还是比较复杂的，涉及到的细节比较多。
 
@@ -1298,7 +874,7 @@ public class DefaultChannelPipeline implements ChannelPipeline {
 }
 ```
 
-### getContextOrDie
+#### getContextOrDie
 
 首先需要通过 getContextOrDie 方法在 pipeline 中查找到指定的 ChannelHandler 对应的 ChannelHandelrContext 。以便确认要删除的 ChannelHandler 确实是存在于 pipeline 中。
 
@@ -1334,7 +910,7 @@ public final ChannelHandlerContext context(ChannelHandler handler) {
 }
 ```
 
-### remove
+#### remove
 
 remove 方法的整体代码结构和 addLast0 方法的代码结构一样，整体逻辑也是先从 pipeline 中的双向链表结构中将指定的 ChanneHandlerContext 删除，然后在处理被删除的 ChannelHandler 中 handlerRemoved 方法的回调。
 
@@ -1382,9 +958,9 @@ private synchronized void atomicRemoveFromHandlerList(AbstractChannelHandlerCont
 }
 ```
 
-2. 如果此时 channel 并未向对应的 reactor 进行注册，则需要向 pipeline 的任务列表中添加 PendingHandlerRemovedTask 任务，再该任务中会执行 ChannelHandler 的 handlerRemoved 回调，当 channel 向 reactor 注册成功后，reactor 会执行 pipeline 中任务列表中的任务，从而回调被删除 ChannelHandler 的 handlerRemoved 方法。
+1. 如果此时 channel 并未向对应的 reactor 进行注册，则需要向 pipeline 的任务列表中添加 PendingHandlerRemovedTask 任务，再该任务中会执行 ChannelHandler 的 handlerRemoved 回调，当 channel 向 reactor 注册成功后，reactor 会执行 pipeline 中任务列表中的任务，从而回调被删除 ChannelHandler 的 handlerRemoved 方法。
 
-![img](https://cdn.nlark.com/yuque/0/2024/png/35210587/1729750269864-9b9c8bf9-0baf-421f-951b-76a4ce57172a.png)
+![image-20241031194316555](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410311943073.png)
 
 ```java
 private final class PendingHandlerRemovedTask extends PendingHandlerCallback {
@@ -1434,9 +1010,365 @@ final void setRemoved() {
 }
 ```
 
-3. 如果 channel 已经在 reactor 中注册成功，那么当 channelHandler 从 pipeline 中删除之后，需要立即回调其 handlerRemoved 方法。但是需要确保 handlerRemoved 方法在 channelHandler 指定的 executor 中进行。
+1. 如果 channel 已经在 reactor 中注册成功，那么当 channelHandler 从 pipeline 中删除之后，需要立即回调其 handlerRemoved 方法。但是需要确保 handlerRemoved 方法在 channelHandler 指定的 executor 中进行。
 
-## pipeline 的初始化
+### ChanneHandlerContext 的创建
+
+我们在文章开头有提到这样一句话
+
+> 其实它唯一创建的地方，就是当一个 `ChannelHandler` 添加到管道`ChannelPipeline`时，由`ChannelPipeline`创建一个包裹 `ChannelHandler` 的上下文`ChannelHandlerContext`对象添加进去。
+
+接下来我们看看 ChannelPipeline#addFirst(String n ame, ChannelHandler handler)
+
+#### ChannelPipeline.addFirst
+
+```Java
+@Override
+public final ChannelPipeline addFirst(String n ame, ChannelHandler handler) {
+    return addFirst(null, name, handler);
+}
+
+@Override
+public final ChannelPipeline addFirst(EventExecutorGroup group, String name, ChannelHandler handler) {
+    final AbstractChannelHandlerContext newCtx;
+    // 使用synchronized锁，防止并发问题
+    synchronized (this) {
+        // 检查这个 handler 有没有重复
+        checkMultiplicity(handler);
+        // 过滤name，如果当前管道中已经存在这个名字的 ChannelHandler，
+        // 直接抛出异常
+        name = filterName(name, handler);
+
+        // 创建这个事件处理器ChannelHandler对应的上下文对象
+        newCtx = newContext(group, name, handler);
+
+        // 将这个上下文对象添加到管道中
+        // 因为是用双向链表存储的，所以就是改变链表节点的 next 和 prev指向
+        addFirst0(newCtx);
+
+        // 如果 registered == false，则表示该通道还没有在eventLoop上注册。
+        // 因此我们将上下文的状态设置成正在添加状态，
+        // 并添加一个任务，该任务将在通道注册后就会调用 ChannelHandler.handlerAdded(...)。
+        if (!registered) {
+            newCtx.setAddPending();
+            callHandlerCallbackLater(newCtx, true);
+            return this;
+        }
+
+        EventExecutor executor = newCtx.executor();
+        if (!executor.inEventLoop()) {
+            // 如果当前线程不是新创建上下文的执行器线程，
+            // 那么使用executor.execute 方法，保证在执行器线程调用 callHandlerAdded0 方法
+            callHandlerAddedInEventLoop(newCtx, executor);
+            return this;
+        }
+    }
+    // 将新创建上下文状态变成已添加，且调用 ChannelHandler.handlerAdded(...)方法
+    callHandlerAdded0(newCtx);
+    return this;
+}
+```
+
+方法流程分析：
+
+1. 因为添加 `ChannelHandler` 会在任何线程调用，所以使用 `synchronized` 锁来防止并发修改问题。
+
+2. 通过 `checkMultiplicity(handler)`  方法检查这个 `handler` 有没有重复。
+
+3. 通过 `filterName(name, handler)` 方法判断这个名字在当前管道中是否重复。
+
+4. 通过 `newContext(group, name, handler)` 创建这个事件处理器`ChannelHandler`对应的上下文对象。
+
+5. 通过 `addFirst0(newCtx)` 方法将新建上下文对象添加到管道中。
+
+6. 下面就是关于新建上下文状态和
+
+   ```
+   ChannelHandler.handlerAdded(...)
+   ```
+
+    方法调用问题的处理，分为几种情况:
+
+   > - 当管道对应的通道还没有注册到 `eventLoop`, 那么`handlerAdded(...)` 现在还不能被调用；那就先将上下文状态变成 `ADD_PENDING`,并添加一个任务，保证当通道添加之后，再将状态变成 `ADD_COMPLETE` 且调用`handlerAdded(...)` 方法。
+   > - 当前线程不是新创建上下文执行器线程，那么也是先将上下文状态变成 `ADD_PENDING`, 并在上下文执行器线程中调用 `callHandlerAdded0` 方法。
+   > - 不是上面情况，直接调用`callHandlerAdded0` 方法，将状态变成 `ADD_COMPLETE` 且调用`handlerAdded(...)` 方法。
+
+#### 检查重复
+
+`checkMultiplicity(...)`
+
+```java
+ private static void checkMultiplicity(ChannelHandler handler) {
+     if (handler instanceof ChannelHandlerAdapter) {
+         // 如果是 ChannelHandlerAdapter 的子类
+         ChannelHandlerAdapter h = (ChannelHandlerAdapter) handler;
+         // 只有 ChannelHandler 是可共享的，才能多次添加，
+         // 否则 handler 已被添加(h.added == true) 的情况下，直接抛出异常
+         if (!h.isSharable() && h.added) {
+             throw new ChannelPipelineException(
+                     h.getClass().getName() +
+                     " is not a @Sharable handler, so can't be added or removed multiple times.");
+         }
+         h.added = true;
+     }
+ }
+```
+
+> 检查 `ChannelHandler` 是否重复
+> 只有被 `@Sharable` 注解的`ChannelHandler` 才可以多次添加到一个或多个管道 `ChannelPipeline`。
+
+#### 生成Name
+
+`filterName(...)`
+
+```java
+private String filterName(String name, ChannelHandler handler) {
+    if (name == null) {
+        // 如果没有指定name,则会为handler默认生成一个name，该方法可确保默认生成的name在pipeline中不会重复
+        return generateName(handler);
+    }
+
+    // 如果指定了name，需要确保name在pipeline中是唯一的
+    checkDuplicateName(name);
+    return name;
+}
+```
+
+如果用户再向 pipeline 添加 ChannelHandler 的时候，为其指定了具体的名称，那么这里需要确保用户指定的名称在 pipeline 中是唯一的。
+
+```java
+private void checkDuplicateName(String name) {
+    if (context0(name) != null) {
+        throw new IllegalArgumentException("Duplicate handler name: " + name);
+    }
+}
+
+/**
+ * 通过指定名称在pipeline中查找对应的channelHandler 没有返回null
+ * */
+private AbstractChannelHandlerContext context0(String name) {
+    AbstractChannelHandlerContext context = head.next;
+    while (context != tail) {
+        if (context.name().equals(name)) {
+            return context;
+        }
+        context = context.next;
+    }
+    return null;
+}
+```
+
+如果用户没有为 ChannelHandler 指定名称，那么就需要为 ChannelHandler 在 pipeline 中默认生成一个唯一的名称。
+
+```java
+// pipeline中channelHandler对应的name缓存
+private static final FastThreadLocal<Map<Class<?>, String>> nameCaches =
+        new FastThreadLocal<Map<Class<?>, String>>() {
+    @Override
+    protected Map<Class<?>, String> initialValue() {
+        return new WeakHashMap<Class<?>, String>();
+    }
+};
+
+private String generateName(ChannelHandler handler) {
+    // 获取pipeline中channelHandler对应的name缓存
+    Map<Class<?>, String> cache = nameCaches.get();
+    Class<?> handlerType = handler.getClass();
+    String name = cache.get(handlerType);
+    if (name == null) {
+        // 当前handler还没对应的name缓存，则默认生成：simpleClassName + #0
+        name = generateName0(handlerType);
+        cache.put(handlerType, name);
+    }
+
+    if (context0(name) != null) {
+        // 不断重试名称后缀#n + 1 直到没有重复
+        String baseName = name.substring(0, name.length() - 1); 
+        for (int i = 1;; i ++) {
+            String newName = baseName + i;
+            if (context0(newName) == null) {
+                name = newName;
+                break;
+            }
+        }
+    }
+    return name;
+}
+
+private static String generateName0(Class<?> handlerType) {
+    return StringUtil.simpleClassName(handlerType) + "#0";
+}
+```
+
+pipeline 中使用了一个 FastThreadLocal 类型的 nameCaches 来缓存各种类型 ChannelHandler 的基础名称。后面会根据这个基础名称不断的重试生成一个没有冲突的正式名称。缓存 nameCaches 中的 key 表示特定的 ChannelHandler 类型，value 表示该特定类型的 ChannelHandler 的基础名称  `simpleClassName + #0`。
+
+自动为 ChannelHandler 生成默认名称的逻辑是：
+
+- 首先从缓存中 nameCaches 获取当前添加的 ChannelHandler 的基础名称 `simpleClassName + #0`。
+- 如果该基础名称 `simpleClassName + #0` 在 pipeline 中是唯一的，那么就将基础名称作为 ChannelHandler 的名称。
+- 如果缓存的基础名称在 pipeline 中不是唯一的，则不断的增加名称后缀 `simpleClassName#1 ,simpleClassName#2 ...... simpleClassName#n` 直到产生一个没有重复的名称。
+
+虽然用户不大可能将同一类型的 channelHandler 重复添加到 pipeline 中，但是 netty 为了防止这种反复添加同一类型 ChannelHandler 的行为导致的名称冲突，从而利用 nameCaches 来缓存同一类型 ChannelHandler 的基础名称 `simpleClassName + #0`，然后通过不断的重试递增名称后缀，来生成一个在pipeline中唯一的名称。
+
+#### 构造 DefaultChannelHandlerContext
+
+`newContext(...)`
+
+```csharp
+  private AbstractChannelHandlerContext newContext(EventExecutorGroup group, String name, ChannelHandler handler) {
+     return new DefaultChannelHandlerContext(this, childExecutor(group), name, handler);
+ }
+
+  private EventExecutor childExecutor(EventExecutorGroup group) {
+     if (group == null) {
+         return null;
+     }
+     Boolean pinEventExecutor = channel.config().getOption(ChannelOption.SINGLE_EVENTEXECUTOR_PER_GROUP);
+     if (pinEventExecutor != null && !pinEventExecutor) {
+         return group.next();
+     }
+     Map<EventExecutorGroup, EventExecutor> childExecutors = this.childExecutors;
+     if (childExecutors == null) {
+         // 使用4的大小，因为大多数情况下只使用一个额外的 EventExecutor。
+         childExecutors = this.childExecutors = new IdentityHashMap<EventExecutorGroup, EventExecutor>(4);
+     }
+     // 虽然一个事件处理器组 EventExecutorGroup 中管理有多个子事件处理器 EventExecutor，
+     // 但是对于同一个通道 Channel 应该使用同一个子事件处理器 EventExecutor，
+     // 以便使用相同的子执行器触发相同通道的事件。
+     EventExecutor childExecutor = childExecutors.get(group);
+     // 如果 childExecutor 不为null，直接返回 childExecutor，使用同个子事件处理器
+     if (childExecutor == null) {
+         // 没有，则从事件处理器组中获取一个子事件处理器。
+         childExecutor = group.next();
+         // 记录它，保证同一个管道是同一个子事件处理器。
+         childExecutors.put(group, childExecutor);
+     }
+     return childExecutor;
+ }
+```
+
+> - 直接创建事件处理器`ChannelHandler` 对应的上下文。
+> - `childExecutor(group)` 保证同一个管道添加的子事件执行器 `EventExecutor` 是同一个。
+
+通过前边的介绍我们了解到，当我们向 pipeline 添加 ChannelHandler 的时候，netty 允许我们为 ChannelHandler 指定特定的 executor 去执行 ChannelHandler 中的各种事件回调方法。
+
+通常我们会为 ChannelHandler 指定一个EventExecutorGroup，在创建ChannelHandlerContext 的时候，会通过 childExecutor 方法从 EventExecutorGroup 中选取一个 EventExecutor 来与该 ChannelHandler 绑定。
+
+EventExecutorGroup 是 netty 自定义的一个线程池模型，其中包含多个 EventExecutor ，而 EventExecutor 在 netty 中是一个线程的执行模型。相关的具体实现和用法笔者已经在[《Reactor在Netty中的实现(创建篇)》](https://mp.weixin.qq.com/s?__biz=Mzg2MzU3Mjc3Ng==&mid=2247483907&idx=1&sn=084c470a8fe6234c2c9461b5f713ff30&chksm=ce77c444f9004d52e7c6244bee83479070effb0bc59236df071f4d62e91e25f01715fca53696&scene=21#wechat_redirect)一文中给出了详尽的介绍，忘记的同学可以在回顾下。
+
+在介绍 executor 的绑定逻辑之前，这里笔者需要先为大家介绍一个相关的重要参数：`SINGLE_EVENTEXECUTOR_PER_GROUP` ，默认为 true 。
+
+```java
+ServerBootstrap b = new ServerBootstrap();
+b.group(bossGroup, workerGroup)
+.channel(NioServerSocketChannel.class)
+  .........
+.childOption(ChannelOption.SINGLE_EVENTEXECUTOR_PER_GROUP,true）
+```
+
+我们知道在 netty 中，每一个 channel 都会对应一个独立的 pipeline ，如果我们开启了 `SINGLE_EVENTEXECUTOR_PER_GROUP` 参数，表示在一个 channel 对应的 pipeline 中，如果我们为多个 ChannelHandler 指定了同一个 EventExecutorGroup ，那么这多个 channelHandler 只能绑定到 EventExecutorGroup 中的同一个 EventExecutor 上。
+
+什么意思呢？？比如我们有下面一段初始化`pipeline`的代码：
+
+```java
+ServerBootstrap b = new ServerBootstrap();
+b.group(bossGroup, workerGroup)
+     ........................
+ .childHandler(new ChannelInitializer<SocketChannel>() {
+     @Override
+     public void initChannel(SocketChannel ch) throws Exception {
+         ChannelPipeline pipeline = ch.pipeline();
+         pipeline.addLast(eventExecutorGroup,channelHandler1)
+         pipeline.addLast(eventExecutorGroup,channelHandler2)
+         pipeline.addLast(eventExecutorGroup,channelHandler3)
+     }
+ });
+```
+
+eventExecutorGroup 中包含 EventExecutor1，EventExecutor2 ， EventExecutor3 三个执行线程。
+
+假设此时第一个连接进来，在创建 channel1 后初始化 pipeline1 的时候，如果在开启 `SINGLE_EVENTEXECUTOR_PER_GROUP` 参数的情况下，那么在 channel1 对应的 pipeline1 中 channelHandler1，channelHandler2 ， channelHandler3 绑定的 EventExecutor 均为 EventExecutorGroup 中的 EventExecutor1 。
+
+第二个连接 channel2 对应的 pipeline2 中 channelHandler1 ， channelHandler2 ，channelHandler3 绑定的 EventExecutor 均为 EventExecutorGroup 中的 EventExecutor2 。
+
+第三个连接 channel3 对应的 pipeline3 中 channelHandler1 ， channelHandler2 ，channelHandler3 绑定的 EventExecutor 均为 EventExecutorGroup 中的 EventExecutor3 。
+
+以此类推........
+
+![image-20241031194308770](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410311943399.png)
+
+如果在关闭 `SINGLE_EVENTEXECUTOR_PER_GROUP` 参数的情况下, channel1 对应的 pipeline1 中 channelHandler1 会绑定到 EventExecutorGroup 中的 EventExecutor1 ，channelHandler2 会绑定到 EventExecutor2 ，channelHandler3 会绑定到 EventExecutor3 。
+
+同理其他 channel 对应的 pipeline 中的 channelHandler 绑定逻辑同 channel1 。它们均会绑定到 EventExecutorGroup 中的不同 EventExecutor 中。
+
+![image-20241031194303482](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410311943169.png)
+
+当我们了解了 `SINGLE_EVENTEXECUTOR_PER_GROUP ` 参数的作用之后，再来看下面这段绑定逻辑就很容易理解了。
+
+```java
+// 在每个pipeline中都会保存EventExecutorGroup中绑定的线程
+private Map<EventExecutorGroup, EventExecutor> childExecutors;
+
+private EventExecutor childExecutor(EventExecutorGroup group) {
+    if (group == null) {
+        return null;
+    }
+
+    Boolean pinEventExecutor = channel.config().getOption(ChannelOption.SINGLE_EVENTEXECUTOR_PER_GROUP);
+    if (pinEventExecutor != null && !pinEventExecutor) {
+        //如果没有开启SINGLE_EVENTEXECUTOR_PER_GROUP，则按顺序从指定的EventExecutorGroup中为channelHandler分配EventExecutor
+        return group.next();
+    }
+
+    //获取pipeline绑定到EventExecutorGroup的线程（在一个pipeline中会为每个指定的EventExecutorGroup绑定一个固定的线程）
+    Map<EventExecutorGroup, EventExecutor> childExecutors = this.childExecutors;
+    if (childExecutors == null) {
+        childExecutors = this.childExecutors = new IdentityHashMap<EventExecutorGroup, EventExecutor>(4);
+    }
+
+    //获取该pipeline绑定在指定EventExecutorGroup中的线程
+    EventExecutor childExecutor = childExecutors.get(group);
+    if (childExecutor == null) {
+        childExecutor = group.next();
+        childExecutors.put(group, childExecutor);
+    }
+    return childExecutor;
+}
+```
+
+如果我们并未特殊指定 ChannelHandler 的 executor ，那么默认会是对应 channel 绑定的 reactor 线程负责执行该 ChannelHandler 。
+
+如果我们未开启 `SINGLE_EVENTEXECUTOR_PER_GROUP ` ，netty 就会从我们指定的 EventExecutorGroup 中按照 round-robin 的方式为 ChannelHandler 绑定其中一个 eventExecutor 。
+
+![image-20241031194258633](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410311942958.png)
+
+如果我们开启了 `SINGLE_EVENTEXECUTOR_PER_GROUP `，**相同的 EventExecutorGroup 在同一个 pipeline 实例中的绑定关系是固定的**。在 pipeline 中如果多个 channelHandler 指定了同一个 EventExecutorGroup ，那么这些 channelHandler 的 executor 均会绑定到一个固定的 eventExecutor 上。
+
+![image-20241031194253838](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410311942951.png)
+
+
+
+这种固定的绑定关系缓存于每个 pipeline 中的 Map<EventExecutorGroup, EventExecutor> childExecutors 字段中，key 是用户为 channelHandler 指定的 EventExecutorGroup ，value 为该 EventExecutorGroup 在 pipeline 实例中的绑定 eventExecutor 。
+
+接下来就是从 childExecutors 中获取指定 EventExecutorGroup 在该 pipeline 实例中的绑定 eventExecutor，如果绑定关系还未建立，则通过 round-robin 的方式从 EventExecutorGroup 中选取一个 eventExecutor 进行绑定，并在 childExecutor 中缓存绑定关系。
+
+如果绑定关系已经建立，则直接为 ChannelHandler 指定绑定好的 eventExecutor。
+
+#### `addFirst0(...)`
+
+```cpp
+ private void addFirst0(AbstractChannelHandlerContext newCtx) {
+     AbstractChannelHandlerContext nextCtx = head.next;
+     newCtx.prev = head;
+     newCtx.next = nextCtx;
+     head.next = newCtx;
+     nextCtx.prev = newCtx;
+ }
+```
+
+> 因为是双向链表，所以插入一个节点，是要改变当前插入位置前节点的 `next` 和后节点的 `prev`,以及这个插入节点的`next` 和 `prev`。
+
+### pipeline 的初始化
 
 其实关于 pipeline 初始化的相关内容我们在[《详细图解 Netty Reactor 启动全流程》](https://mp.weixin.qq.com/s?__biz=Mzg2MzU3Mjc3Ng==&mid=2247484005&idx=1&sn=52f51269902a58f40d33208421109bc3&chksm=ce77c422f9004d340e5b385ef6ba24dfba1f802076ace80ad6390e934173a10401e64e13eaeb&scene=21#wechat_redirect)中已经简要介绍了 NioServerSocketChannel 中的 pipeline 的初始化时机以及过程。
 
@@ -1444,7 +1376,7 @@ final void setRemoved() {
 
 本小节笔者将结合这两种类型的 Channel 来完整全面的介绍 pipeline 的整个初始化过程。
 
-### NioServerSocketChannel 中 pipeline 的初始化
+#### NioServerSocketChannel 中 pipeline 的初始化
 
 从前边提到的这两篇文章以及本文前边的相关内容我们知道，Netty 提供了一个特殊的 ChannelInboundHandler 叫做 ChannelInitializer ，用户可以利用这个特殊的 ChannelHandler 对 Channel 中的 pipeline 进行自定义的初始化逻辑。
 
@@ -1520,7 +1452,7 @@ void init(Channel channel) {
 
 **注意此时 NioServerSocketChannel 并未开始向 Main Reactor 注册**，根据本文第四小节《4. 向 pipeline 添加 channelHandler 》中的介绍，此时向 pipeline 中添加这个新的 ChannelInitializer 之后，netty 会向 pipeline 的任务列表中添加 PendingHandlerAddedTask 。当 NioServerSocketChannel 向 Main Reactor 注册成功之后，紧接着 Main Reactor 线程会调用这个 PendingHandlerAddedTask ，在任务中会执行这个新的 ChannelInitializer 的 handlerAdded 回调。在这个回调方法中会执行上边 initChannel 方法里的代码。
 
-![img](https://cdn.nlark.com/yuque/0/2024/png/35210587/1729750639734-aa489ed3-38b6-4c00-b392-f001b904cf50.png)
+![image-20241031194242762](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410311942100.png)
 
 当 NioServerSocketChannel 在向 Main Reactor 注册成功之后，就挨个执行 pipeline 中的任务列表中的任务。
 
@@ -1641,7 +1573,7 @@ private boolean initChannel(ChannelHandlerContext ctx) throws Exception {
 
 当执行完 initChannel 方法后此时 pipeline 的结构如下图所示：
 
-![img](https://cdn.nlark.com/yuque/0/2024/png/35210587/1729750854312-ff692cb4-0a15-4e22-abf8-072656d6f108.png)
+![image-20241031194237445](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410311942628.png)
 
 当用户的自定义 ChannelInitializer 被添加进 pipeline 之后，根据第四小节所讲的添加逻辑，此时 NioServerSocketChannel 已经向 main reactor 成功注册完毕，不再需要向 pipeine 的任务列表中添加 PendingHandlerAddedTask 任务，而是直接调用自定义 ChannelInitializer 中的 handlerAdded 回调，和上面的逻辑一样。不同的是这里最终回调至用户自定义的初始化逻辑实现 initChannel 方法中。执行完用户自定义的初始化逻辑之后，从 pipeline 删除用户自定义的 ChannelInitializer 。
 
@@ -1664,7 +1596,7 @@ ServerBootstrap b = new ServerBootstrap();
 
 随后 netty 会以异步任务的形式向 pipeline 的末尾添加 ServerBootstrapAcceptor ，至此 NioServerSocketChannel 中 pipeline 的初始化工作就全部完成了。
 
-### 7NioSocketChannel 中 pipeline 的初始化
+#### NioSocketChannel 中 pipeline 的初始化
 
 在 7.1 小节中笔者举的这个 pipeline 初始化的例子相对来说比较复杂，当我们把这个复杂例子的初始化逻辑搞清楚之后，NioSocketChannel 中 pipeline 的初始化过程就变的很简单了。
 
@@ -1691,7 +1623,7 @@ public class ServerBootstrap extends AbstractBootstrap<ServerBootstrap, ServerCh
 
 在[《Netty 如何高效接收网络连接》](https://mp.weixin.qq.com/s?__biz=Mzg2MzU3Mjc3Ng==&mid=2247484184&idx=1&sn=726877ce28cf6e5d2ac3225fae687f19&chksm=ce77c55ff9004c493b592288819dc4d4664b5949ee97fed977b6558bc517dad0e1f73fab0f46&scene=21#wechat_redirect)一文中我们介绍过，当客户端发起连接，完成三次握手之后，NioServerSocketChannel 上的 OP_ACCEPT 事件活跃，随后会在 NioServerSocketChannel 的 pipeline 中触发 channelRead 事件。并最终在 ServerBootstrapAcceptor 中初始化客户端 NioSocketChannel 。
 
-![img](https://cdn.nlark.com/yuque/0/2024/png/35210587/1729750954263-06885cb0-0158-4ac3-8050-4b073cabf0ca.png)
+![image-20241031194232275](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410311942447.png)
 
 ```java
 private static class ServerBootstrapAcceptor extends ChannelInboundHandlerAdapter {
@@ -1708,7 +1640,7 @@ private static class ServerBootstrapAcceptor extends ChannelInboundHandlerAdapte
 
 在这里会将用户自定义的 ChannelInitializer 添加进 NioSocketChannel 中的 pipeline 中，由于此时 NioSocketChannel 还没有向 sub reactor 开始注册。所以在向 pipeline 中添加 ChannelInitializer 的同时会伴随着 PendingHandlerAddedTask 被添加进 pipeline 的任务列表中。
 
-![img](https://cdn.nlark.com/yuque/0/2024/png/35210587/1729751010575-25f87a8b-25a6-4a9d-86b8-bb05b8f46909.png)
+![image-20241031194226836](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410311942014.png)
 
 后面的流程大家应该很熟悉了，和我们在7.1小节中介绍的一模一样，当 NioSocketChannel 再向 sub reactor 注册成功之后，会执行 pipeline 中的任务列表中的 PendingHandlerAddedTask 任务，在 PendingHandlerAddedTask 任务中会回调用户自定义 ChannelInitializer 的 handelrAdded 方法，在该方法中执行 initChannel 方法，用户自定义的初始化逻辑就封装在这里面。在初始化完 pipeline 后，将 ChannelInitializer 从 pipeline 中删除，并回调其 handlerRemoved 方法。
 

@@ -4,6 +4,7 @@ import { defineConfig, type DefaultTheme } from "vitepress"
 export default defineConfig({
   title: "图解Netty",
   description: "图解Netty",
+  base: "/doc/",
   lastUpdated: true,
   markdown: {
     math: true,

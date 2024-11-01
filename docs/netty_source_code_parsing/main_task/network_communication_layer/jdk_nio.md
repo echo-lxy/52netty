@@ -4,9 +4,9 @@
 
 有了下列三篇文章的基础
 
-*  [从内核角度看 IO 模型](/netty_source_code_parsing/main_task/network_communication_layer/io_model) 
-*  [IO 多路复用](/netty_source_code_parsing/main_task/network_communication_layer/io_multiplexing)
-*  [IO 线程模型](/netty_source_code_parsing/main_task/network_communication_layer/io_thread_model)
+- [从内核角度看 IO 模型](/netty_source_code_parsing/network_program/io_model)
+- [IO 多路复用](/netty_source_code_parsing/network_program/io_multiplexing)
+- [IO 线程模型](/netty_source_code_parsing/network_program/io_thread_model)
 
 你应该对 IO 模型和 IO 线程模型有了较为清楚的认识。接下来，我们就来看看 JDK 是如何实现 NIO 模型的。
 
@@ -18,11 +18,11 @@
 
 ## NIO 的起源
 
-NIO技术是怎么来的？为啥需要这个技术呢？先给出一份在 JDK NIO 诞生之前，服务器端同步阻塞 I/O 处理的参考代码：
+NIO 技术是怎么来的？为啥需要这个技术呢？先给出一份在 JDK NIO 诞生之前，服务器端同步阻塞 I/O 处理的参考代码：
 
 ```java
 class ConnectionPerThreadWithPool implements Runnable{
-    
+
     public void run()
     {
         //线程池
@@ -97,7 +97,7 @@ class ConnectionPerThreadWithPool implements Runnable{
 1. **线程创建和销毁成本高**：线程的创建和销毁需要通过重量级的系统调用来完成。
 2. **内存占用大**：Java 线程的栈内存一般至少分配 512K 至 1M 的空间。如果系统中的线程数超过千个，整个 JVM 的内存将消耗超过 1G。
 3. **线程切换成本高**：操作系统在进行线程切换时，需要保存线程的上下文，并执行系统调用。过多的线程频繁切换可能导致切换所需的时间超过线程执行的时间，通常表现为系统 CPU 的 `sy` 值异常高（超过 20%），从而使系统几乎不可用。
-4. **无效的等待时间**：大量线程的大部分时间都是在阻塞等待IO，所以根本没必要创建这么多线程，完全是浪费线程
+4. **无效的等待时间**：大量线程的大部分时间都是在阻塞等待 IO，所以根本没必要创建这么多线程，完全是浪费线程
 
 #### CPU 利用率说明
 
@@ -123,8 +123,6 @@ Swap: 2064376k total, 0k used, 2064376k free, 106200k cached
 - `99.3%id` 表示 CPU 空闲时间所占的百分比。
 
 因此，当 CPU `sy` 值高时，表示系统调用耗费了较多的 CPU。对于 Java 应用程序而言，造成这种现象的主要原因是启动的线程较多，并且这些线程多数处于不断的等待（如锁等待状态）和执行状态的变化中，这就导致操作系统要不断调度这些线程，进行切换执行。
-
-
 
 ### Multi Connection Per Thread 模型
 
@@ -195,15 +193,13 @@ public class PollingNonBlockingTCPServer {
 }
 ```
 
-这种轮询方法使用单线程依次检查每个连接的状态，对于少量连接的非阻塞 I/O 是可行的，但当客户端数量增加时，单线程轮询的效率会显著下降。 
+这种轮询方法使用单线程依次检查每个连接的状态，对于少量连接的非阻塞 I/O 是可行的，但当客户端数量增加时，单线程轮询的效率会显著下降。
 
 <img src="https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410311435732.png?x-oss-process=image/watermark,image_aW1nL3dhdGVyLnBuZw==,g_nw,x_1,y_1" alt="image-20241031143503642" style="zoom:33%;" />
 
 **总之，当面对十万甚至百万级连接时，传统的 BIO 模型已显得无能为力。**
 
-**随着移动端应用的兴起和各种网络游戏的盛行，高并发的需求越来越普遍。此时，必然需要一种更高效的 I/O 处理组件——这就是 Java 的 NIO 编程组件。** 
-
-
+**随着移动端应用的兴起和各种网络游戏的盛行，高并发的需求越来越普遍。此时，必然需要一种更高效的 I/O 处理组件——这就是 Java 的 NIO 编程组件。**
 
 ## NIO 简介
 
@@ -389,7 +385,7 @@ channel.read(bufferArray);
 
 请注意，缓冲区首先被插入到一个数组中，然后该数组作为参数传递给 `channel.read()` 方法。`read()` 方法按照数组中缓冲区的顺序从通道中写入数据。一旦一个缓冲区满了，通道将继续填充下一个缓冲区。
 
-散射读取填满一个缓冲区后再移动到下一个缓冲区，这意味着它不适合动态大小的消息部分。换句话说，如果您有一个固定大小的头部（例如128字节）和一个主体，则散射读取工作良好。
+散射读取填满一个缓冲区后再移动到下一个缓冲区，这意味着它不适合动态大小的消息部分。换句话说，如果您有一个固定大小的头部（例如 128 字节）和一个主体，则散射读取工作良好。
 
 #### Gathering Writes
 
@@ -413,7 +409,7 @@ channel.write(bufferArray);
 
 ### Channel to Channel Transfers
 
- 在 Java NIO 中，您可以直接将数据从一个通道传输到另一个通道，如果其中一个通道是 `FileChannel`。`FileChannel` 类提供了 `transferTo()` 和 `transferFrom()` 方法来完成这一操作。  
+在 Java NIO 中，您可以直接将数据从一个通道传输到另一个通道，如果其中一个通道是 `FileChannel`。`FileChannel` 类提供了 `transferTo()` 和 `transferFrom()` 方法来完成这一操作。
 
 #### transferFrom()
 
@@ -463,11 +459,11 @@ Java NIO 缓冲区用于与 NIO 通道交互。正如您所知道的，数据是
 
 缓冲区本质上是一个内存块，您可以在其中写入数据，然后稍后再读取这些数据。这个内存块被封装在一个 NIO Buffer 对象中，该对象提供了一组方法，使得操作内存块变得更加简单。
 
-Java NIO中代表缓冲区的Buffer类是一个抽象类，位于java.nio包中。
+Java NIO 中代表缓冲区的 Buffer 类是一个抽象类，位于 java.nio 包中。
 
-NIO的Buffer的内部是一个内存块（数组），此类与普通的内存块（Java数组）不同的是：NIO Buffer对象，提供了一组比较有效的方法，用来进行写入和读取的交替访问。
+NIO 的 Buffer 的内部是一个内存块（数组），此类与普通的内存块（Java 数组）不同的是：NIO Buffer 对象，提供了一组比较有效的方法，用来进行写入和读取的交替访问。
 
-Buffer类是一个非线程安全类。
+Buffer 类是一个非线程安全类。
 
 ### 基本的缓冲区使用
 
@@ -655,7 +651,7 @@ Java NIO 的 `Selector` 是一个组件，可以检查一个或多个 Java NIO �
 
 不过，请记住，现代操作系统和 CPU 在多任务处理方面越来越出色，因此多线程的开销随着时间的推移而变小。实际上，如果 CPU 有多个核心，您可能会因不进行多任务处理而浪费 CPU 能力。虽然这种设计讨论属于其他主题，但可以简单地说，您可以使用 `Selector` 用单个线程处理多个通道。
 
-### Selector 的创建 
+### Selector 的创建
 
 您可以通过调用 `Selector.open()` 方法来创建一个 `Selector`：
 
@@ -875,7 +871,7 @@ while(true) {
 }
 ```
 
-所谓通道的读取，就是将数据从通道读取到缓冲区中；所谓通道的写入，就是将数据从缓冲区中写入到通道中。缓冲区的使用，是面向流进行读写操作的OIO所没有的，也是NIO非阻塞的重要前提和基础之一。
+所谓通道的读取，就是将数据从通道读取到缓冲区中；所谓通道的写入，就是将数据从缓冲区中写入到通道中。缓冲区的使用，是面向流进行读写操作的 OIO 所没有的，也是 NIO 非阻塞的重要前提和基础之一。
 
 ## NIO 实战
 
@@ -978,8 +974,6 @@ public static void main(String[] args) throws Exception{
 
 ![image-20241031212204549](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410312122602.png)
 
-
-
 上述的 `Thread` 对应于 Netty 的主从 Reactor 模型中的 **Reactor**。
 
 然后，我们看看 Netty 还需要什么：
@@ -990,9 +984,6 @@ public static void main(String[] args) throws Exception{
 
 因此，我们可以得到如下的 Netty 架构图
 
-
-
 ![img](https://cdn.nlark.com/yuque/0/2024/png/35210587/1729839393448-11d67190-2774-4222-ba61-53b697f6abca.png)
 
 ## 总结
-

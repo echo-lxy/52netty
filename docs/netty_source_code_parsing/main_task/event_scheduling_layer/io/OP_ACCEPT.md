@@ -22,10 +22,10 @@
 
 在 Netty 中，IO 事件分为以下几类：
 
-* **OP_ACCEPT 事件**
-*  **OP_CONNECT 事件**
-* **OP_READ 事件**
-* **OP_WRITE 事件**
+- **OP_ACCEPT 事件**
+- **OP_CONNECT 事件**
+- **OP_READ 事件**
+- **OP_WRITE 事件**
 
 Netty 对于 IO 事件的监听和处理统一封装在 Reactor 模型中。本文将重点聚焦于 `OP_ACCEPT` 事件的处理。
 
@@ -77,7 +77,7 @@ private void processSelectedKey(SelectionKey k, AbstractNioChannel ch) {
 
 <img src="https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410311645839.png?x-oss-process=image/watermark,image_aW1nL3dhdGVyLnBuZw==,g_nw,x_1,y_1" alt="image-20241031164503670" style="zoom:33%;" />
 
-当 `Main Reactor` 轮询到 `NioServerSocketChannel` 上的 **OP_ACCEPT** 事件已就绪时，`Main Reactor` 线程会从 JDK `Selector` 的阻塞轮询 API 调用 `selector.select(timeoutMillis)` 中返回，并转而处理 `NioServerSocketChannel` 上的 **OP_ACCEPT** 事件。  
+当 `Main Reactor` 轮询到 `NioServerSocketChannel` 上的 **OP_ACCEPT** 事件已就绪时，`Main Reactor` 线程会从 JDK `Selector` 的阻塞轮询 API 调用 `selector.select(timeoutMillis)` 中返回，并转而处理 `NioServerSocketChannel` 上的 **OP_ACCEPT** 事件。
 
 ```java
 public final class NioEventLoop extends SingleThreadEventLoop {
@@ -114,13 +114,13 @@ public final class NioEventLoop extends SingleThreadEventLoop {
 - 在处理 IO 就绪事件的入口函数 `processSelectedKey` 中，参数 `AbstractNioChannel ch` 就是 Netty 服务端的 `NioServerSocketChannel`。由于当前执行线程为 **main reactor** 线程，而 `main reactor` 上注册的正是 Netty 服务端的 `NioServerSocketChannel`，负责监听端口地址并接收客户端连接。
 - 通过 `ch.unsafe()` 获取的 `NioUnsafe` 操作类，实际上是 `NioServerSocketChannel` 中对底层 JDK NIO `ServerSocketChannel` 的 `Unsafe` 操作类。
 
-**Unsafe** 接口是 Netty 对 `Channel` 底层操作行为的封装，比如 `NioServerSocketChannel` 的底层 `Unsafe` 操作类的主要职责是 **绑定端口地址** 和 **处理 OP_ACCEPT 事件**。  
+**Unsafe** 接口是 Netty 对 `Channel` 底层操作行为的封装，比如 `NioServerSocketChannel` 的底层 `Unsafe` 操作类的主要职责是 **绑定端口地址** 和 **处理 OP_ACCEPT 事件**。
 
- 在 Netty 中，`OP_ACCEPT` 事件的处理入口函数被封装在 `NioServerSocketChannel` 的底层操作类 `Unsafe` 的 `read` 方法中。  
+在 Netty 中，`OP_ACCEPT` 事件的处理入口函数被封装在 `NioServerSocketChannel` 的底层操作类 `Unsafe` 的 `read` 方法中。
 
 ![image-20241031164525668](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410311645723.png)
 
- 在 `NioServerSocketChannel` 中，`Unsafe` 操作类的实现类型为 `NioMessageUnsafe`，它定义在继承结构中的父类 `AbstractNioMessageChannel` 中。接下来，我们深入到 `NioMessageUnsafe#read` 方法，来查看 Netty 对 **OP_ACCEPT** 事件的具体处理流程：  
+在 `NioServerSocketChannel` 中，`Unsafe` 操作类的实现类型为 `NioMessageUnsafe`，它定义在继承结构中的父类 `AbstractNioMessageChannel` 中。接下来，我们深入到 `NioMessageUnsafe#read` 方法，来查看 Netty 对 **OP_ACCEPT** 事件的具体处理流程：
 
 ## 2、接收客户端连接核心流程框架总览
 
@@ -154,8 +154,6 @@ Main Reactor 线程在一个 `do...while` 循环的 `read loop` 中，不断调�
 2. 从 `NioServerSocketChannel` 中读取客户端连接的次数已达 16 次，此时无论是否还有其他客户端连接，均需退出循环。
 
 以上就是 Netty 在接收客户端连接时的整体核心逻辑。接下来，笔者将提取出这部分逻辑的核心源码实现框架，方便大家将上述核心逻辑与源码中的处理模块对应起来。请注意，大家只需总体把握核心处理流程，无需逐行理解每段代码。后续笔者将针对各个模块逐一进行深入解析。
-
-
 
 ```java
 public abstract class AbstractNioMessageChannel extends AbstractNioChannel {
@@ -237,11 +235,9 @@ public NioServerSocketChannel(ServerSocketChannel channel) {
 }
 ```
 
-同样地，通过 `pipeline()` 获取到的也是 `NioServerSocketChannel` 中的 **pipeline**。`pipeline` 会在 `NioServerSocketChannel` 成功注册到 **main reactor** 后被初始化，用于管理一系列 **ChannelHandler** 处理链，负责处理从事件捕获到响应生成的全过程。  
+同样地，通过 `pipeline()` 获取到的也是 `NioServerSocketChannel` 中的 **pipeline**。`pipeline` 会在 `NioServerSocketChannel` 成功注册到 **main reactor** 后被初始化，用于管理一系列 **ChannelHandler** 处理链，负责处理从事件捕获到响应生成的全过程。
 
 ![image-20241030181159635](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410301811694.png?x-oss-process=image/watermark,image_aW1nL3dhdGVyLnBuZw==,g_nw,x_1,y_1)
-
-
 
 前面提到，Main Reactor 线程在 `read loop` 中会被限制只能读取 NioServerSocketChannel 中的客户端连接 16 次。因此，在开始 `read loop` 之前，我们需要创建一个能够保存读取次数的对象，以便在每次 `read loop` 循环后判断是否结束循环。
 
@@ -312,16 +308,14 @@ for (int i = 0; i < size; i ++) {
 }
 ```
 
-
-
-在Netty中，最终的**ChannelHandler**（`ServerBootstrapAcceptor`）会响应**ChannelRead**事件。它在相应的回调函数中执行以下操作：
+在 Netty 中，最终的**ChannelHandler**（`ServerBootstrapAcceptor`）会响应**ChannelRead**事件。它在相应的回调函数中执行以下操作：
 
 1. 初始化客户端的`NioSocketChannel`。
 2. 将初始化后的`NioSocketChannel`注册到**Sub Reactor Group**中。
 
 一旦完成这些步骤，绑定到客户端`NioSocketChannel`的**Sub Reactor**将开始监听并处理客户端连接上的读写事件。
 
-Netty整个接收客户端连接的逻辑过程如下图所示，步骤包括1、2、3：
+Netty 整个接收客户端连接的逻辑过程如下图所示，步骤包括 1、2、3：
 
 ![image-20241030181257484](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410301812668.png?x-oss-process=image/watermark,image_aW1nL3dhdGVyLnBuZw==,g_nw,x_1,y_1)
 
@@ -358,7 +352,7 @@ public class NioServerSocketChannel extends AbstractNioMessageChannel
 }
 ```
 
-- 通过`javaChannel()`获取封装在Netty服务端`NioServerSocketChannel`中的`JDK 原生 ServerSocketChannel`。
+- 通过`javaChannel()`获取封装在 Netty 服务端`NioServerSocketChannel`中的`JDK 原生 ServerSocketChannel`。
 
 ```java
 @Override
@@ -384,12 +378,12 @@ public static SocketChannel accept(final ServerSocketChannel serverSocketChannel
 }
 ```
 
-在这一步中，我们回顾之前在[《从内核角度看 IO 模型》](/netty_source_code_parsing/main_task/network_communication_layer/io_model)中介绍的内容：调用监听Socket的`accept`方法时，内核会基于监听Socket创建一个新的 Socket，这个 Socket 专门用于与客户端之间的网络通信，我们称之为**客户端连接Socket**。在这个过程中：
+在这一步中，我们回顾之前在[《从内核角度看 IO 模型》](/netty_source_code_parsing/network_program/io_model)中介绍的内容：调用监听 Socket 的`accept`方法时，内核会基于监听 Socket 创建一个新的 Socket，这个 Socket 专门用于与客户端之间的网络通信，我们称之为**客户端连接 Socket**。在这个过程中：
 
 - **ServerSocketChannel** 类似于监听 Socket
 - **SocketChannel** 类似于客户端连接 Socket
 
-由于我们在创建 `NioServerSocketChannel` 时将JDK NIO原生的 `ServerSocketChannel` 设置为非阻塞模式，因此，当 `ServerSocketChannel` 上有客户端连接时，会直接创建 `SocketChannel`。如果此时没有客户端连接，`accept` 调用会立即返回 `null`，而不会阻塞。
+由于我们在创建 `NioServerSocketChannel` 时将 JDK NIO 原生的 `ServerSocketChannel` 设置为非阻塞模式，因此，当 `ServerSocketChannel` 上有客户端连接时，会直接创建 `SocketChannel`。如果此时没有客户端连接，`accept` 调用会立即返回 `null`，而不会阻塞。
 
 ```java
 protected AbstractNioChannel(Channel parent, SelectableChannel ch, int readInterestOp) {
@@ -430,7 +424,7 @@ public class NioServerSocketChannel extends AbstractNioMessageChannel
 }
 ```
 
- 在这一过程中，`ServerSocketChannel` 的 `accept` 方法将用于获取JDK NIO原生的 `SocketChannel`，该 `SocketChannel` 负责底层与客户端进行真实的通信。随后，Netty会基于该 `SocketChannel` 创建其自有的 `NioSocketChannel`。  
+在这一过程中，`ServerSocketChannel` 的 `accept` 方法将用于获取 JDK NIO 原生的 `SocketChannel`，该 `SocketChannel` 负责底层与客户端进行真实的通信。随后，Netty 会基于该 `SocketChannel` 创建其自有的 `NioSocketChannel`。
 
 ```java
 public class NioSocketChannel extends AbstractNioByteChannel implements io.netty.channel.socket.SocketChannel {
@@ -443,9 +437,9 @@ public class NioSocketChannel extends AbstractNioByteChannel implements io.netty
 }
 ```
 
-创建客户端 `NioSocketChannel` 的过程与之前讨论的创建服务端 `NioServerSocketChannel` 的整体流程大致相同。在此，我们将重点对比这两者在创建过程中的不同之处。  
+创建客户端 `NioSocketChannel` 的过程与之前讨论的创建服务端 `NioServerSocketChannel` 的整体流程大致相同。在此，我们将重点对比这两者在创建过程中的不同之处。
 
-### 对比NioSocketChannel与NioServerSocketChannel的不同
+### 对比 NioSocketChannel 与 NioServerSocketChannel 的不同
 
 #### 1：Channel 的层次不同
 
@@ -461,7 +455,7 @@ public NioServerSocketChannel(ServerSocketChannel channel) {
 }
 ```
 
-#### 2：向 Reactor 注册的IO事件不同
+#### 2：向 Reactor 注册的 IO 事件不同
 
 客户端 `NioSocketChannel` 向 Sub Reactor 注册的是 `SelectionKey.OP_READ` 事件，而服务端 `NioServerSocketChannel` 向 Main Reactor 注册的是 `SelectionKey.OP_ACCEPT` 事件。
 
@@ -496,8 +490,6 @@ public class NioServerSocketChannel extends AbstractNioMessageChannel
 
 ![image-20241101123540795](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202411011249679.png)
 
-
-
 在 Netty 中，客户端的 `NioSocketChannel` 和服务端的 `NioServerSocketChannel` 分别继承了不同的抽象类：
 
 - `NioSocketChannel` 继承自 `AbstractNioByteChannel`
@@ -514,11 +506,11 @@ public class NioServerSocketChannel extends AbstractNioMessageChannel
 
 通过这样的设计，Netty 能够高效地管理不同类型的通道，并在适当的时机处理相应的事件和数据，确保网络通信的高性能和灵活性。
 
-------
+---
 
 以上就是`NioSocketChannel`与`NioServerSocketChannel`创建过程中的不同之处，后面的过程就一样了。
 
-1. 在`AbstractNioChannel` 类中封装 JDK NIO 原生的`SocketChannel`，并将其底层的 IO 模型设置为`非阻塞`，保存需要监听的IO事件`OP_READ`。
+1. 在`AbstractNioChannel` 类中封装 JDK NIO 原生的`SocketChannel`，并将其底层的 IO 模型设置为`非阻塞`，保存需要监听的 IO 事件`OP_READ`。
 
 ```java
 protected AbstractNioChannel(Channel parent, SelectableChannel ch, int readInterestOp) {
@@ -534,7 +526,7 @@ protected AbstractNioChannel(Channel parent, SelectableChannel ch, int readInter
 }
 ```
 
-2. 为客户端NioSocketChannel创建全局唯一的`channelId`，创建客户端NioSocketChannel的底层操作类`NioByteUnsafe`，创建pipeline。
+2. 为客户端 NioSocketChannel 创建全局唯一的`channelId`，创建客户端 NioSocketChannel 的底层操作类`NioByteUnsafe`，创建 pipeline。
 
 ```java
 protected AbstractChannel(Channel parent) {
@@ -599,7 +591,7 @@ private final class NioMessageUnsafe extends AbstractNioUnsafe {
                 readPending = false;
                 pipeline.fireChannelRead(readBuf.get(i));
             }
-            
+
               ........省略.........
         } finally {
               ........省略.........
@@ -608,7 +600,7 @@ private final class NioMessageUnsafe extends AbstractNioUnsafe {
 }
 ```
 
- 随后，**main reactor线程** 将遍历 `List<Object> readBuf` 集合中的 `NioSocketChannel`，并在 `NioServerSocketChannel` 的 **pipeline** 中传播 **ChannelRead** 事件。  
+随后，**main reactor 线程** 将遍历 `List<Object> readBuf` 集合中的 `NioSocketChannel`，并在 `NioServerSocketChannel` 的 **pipeline** 中传播 **ChannelRead** 事件。
 
 <img src="https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410301852404.png?x-oss-process=image/watermark,image_aW1nL3dhdGVyLnBuZw==,g_nw,x_1,y_1" alt="image-20241030185234229" style="zoom: 50%;" />
 
@@ -701,7 +693,7 @@ public final class EchoServer {
 }
 ```
 
- 在上述示例代码中，通过 `ServerBootstrap` 配置的 `NioSocketChannel` 相关属性，会在 Netty 启动并初始化 `NioServerSocketChannel` 时，将 `ServerBootstrapAcceptor` 的创建和初始化工作封装成异步任务。随后，在 `NioServerSocketChannel` 成功注册到主 Reactor 中后，这些任务将被执行。  
+在上述示例代码中，通过 `ServerBootstrap` 配置的 `NioSocketChannel` 相关属性，会在 Netty 启动并初始化 `NioServerSocketChannel` 时，将 `ServerBootstrapAcceptor` 的创建和初始化工作封装成异步任务。随后，在 `NioServerSocketChannel` 成功注册到主 Reactor 中后，这些任务将被执行。
 
 ```java
 public class ServerBootstrap extends AbstractBootstrap<ServerBootstrap, ServerChannel> {
@@ -732,7 +724,7 @@ public class ServerBootstrap extends AbstractBootstrap<ServerBootstrap, ServerCh
 
 <img src="https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410311648472.png?x-oss-process=image/watermark,image_aW1nL3dhdGVyLnBuZw==,g_nw,x_1,y_1" alt="image-20241031164824410" style="zoom:50%;" />
 
-随后会将初始化好的客户端`NioSocketChannel`向Sub Reactor Group中注册，并监听`OP_READ事件`。
+随后会将初始化好的客户端`NioSocketChannel`向 Sub Reactor Group 中注册，并监听`OP_READ事件`。
 
 ## 5、向 SubReactorGroup 中注册 NioSocketChannel
 
@@ -826,13 +818,13 @@ public final void register(EventLoop eventLoop, final ChannelPromise promise) {
 }
 ```
 
-注意，此时传递进来的 `EventLoop` 为 Sub Reactor。但执行线程为 Main Reactor 线程，而不是 Sub Reactor 线程（此时 Sub Reactor 还未启动）。因此，这里的 `eventLoop.inEventLoop()` 返回的是 `false`。  
+注意，此时传递进来的 `EventLoop` 为 Sub Reactor。但执行线程为 Main Reactor 线程，而不是 Sub Reactor 线程（此时 Sub Reactor 还未启动）。因此，这里的 `eventLoop.inEventLoop()` 返回的是 `false`。
 
 在 `else` 分支中，向绑定的 Sub Reactor 提交注册 `NioSocketChannel` 的任务。注册任务提交后，此时绑定的 Sub Reactor 线程会启动。
 
 ### register0
 
-我们再次来到了 Channel 注册的老地方，即 `register0` 方法。在 [《BootStrap 启动 Netty 服务》](/netty_source_code_parsing/main_task/boot_layer/bootstrap_run)中，我们花了大量篇幅介绍了这个方法。此处我们只对比 `NioSocketChannel` 与 `NioServerSocketChannel` 的不同之处。  
+我们再次来到了 Channel 注册的老地方，即 `register0` 方法。在 [《BootStrap 启动 Netty 服务》](/netty_source_code_parsing/main_task/boot_layer/bootstrap_run)中，我们花了大量篇幅介绍了这个方法。此处我们只对比 `NioSocketChannel` 与 `NioServerSocketChannel` 的不同之处。
 
 ```java
 private void register0(ChannelPromise promise) {
@@ -846,7 +838,7 @@ private void register0(ChannelPromise promise) {
         registered = true;
 
         pipeline.invokeHandlerAddedIfNeeded();
-    
+
         safeSetSuccess(promise);
         pipeline.fireChannelRegistered();
         if (isActive()) {
@@ -892,7 +884,7 @@ public abstract class AbstractNioChannel extends AbstractChannel {
 
 <img src="https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410311649020.png?x-oss-process=image/watermark,image_aW1nL3dhdGVyLnBuZw==,g_nw,x_1,y_1" alt="image-20241031164956914" style="zoom:33%;" />
 
- 随后调用 `pipeline.invokeHandlerAddedIfNeeded()` 回调客户端 `NioSocketChannel` 上 `pipeline` 中所有 `ChannelHandler` 的 `handlerAdded` 方法。此时，`pipeline` 的结构中只有一个 `ChannelInitializer`。最终会在 `ChannelInitializer#handlerAdded` 回调方法中初始化客户端 `NioSocketChannel` 的 `pipeline`。  
+随后调用 `pipeline.invokeHandlerAddedIfNeeded()` 回调客户端 `NioSocketChannel` 上 `pipeline` 中所有 `ChannelHandler` 的 `handlerAdded` 方法。此时，`pipeline` 的结构中只有一个 `ChannelInitializer`。最终会在 `ChannelInitializer#handlerAdded` 回调方法中初始化客户端 `NioSocketChannel` 的 `pipeline`。
 
 <img src="https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410311648472.png?x-oss-process=image/watermark,image_aW1nL3dhdGVyLnBuZw==,g_nw,x_1,y_1" alt="image-20241031164824410" style="zoom: 50%;" />
 
@@ -913,9 +905,9 @@ public abstract class ChannelInitializer<C extends Channel> extends ChannelInbou
 }
 ```
 
-关于对Channel中pipeline的详细初始化过程，对细节部分感兴趣的同学可以回看下 [《BootStrap 启动 Netty 服务》](/netty_source_code_parsing/main_task/boot_layer/bootstrap_run)
+关于对 Channel 中 pipeline 的详细初始化过程，对细节部分感兴趣的同学可以回看下 [《BootStrap 启动 Netty 服务》](/netty_source_code_parsing/main_task/boot_layer/bootstrap_run)
 
- 此时，客户端 `NioSocketChannel` 中 `pipeline` 的结构变为了我们自定义的样子。在示例代码中，我们自定义的 `ChannelHandler` 为 `EchoServerHandler`。  
+此时，客户端 `NioSocketChannel` 中 `pipeline` 的结构变为了我们自定义的样子。在示例代码中，我们自定义的 `ChannelHandler` 为 `EchoServerHandler`。
 
 <img src="https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410311650961.png?x-oss-process=image/watermark,image_aW1nL3dhdGVyLnBuZw==,g_nw,x_1,y_1" alt="image-20241031165026880" style="zoom:50%;" />
 
@@ -943,7 +935,7 @@ public class EchoServerHandler extends ChannelInboundHandlerAdapter {
 }
 ```
 
- 当客户端 `NioSocketChannel` 中的 `pipeline` 初始化完毕后，Netty 开始调用 `safeSetSuccess(promise)` 方法，回调 `regFuture` 中注册的 `ChannelFutureListener`，通知客户端 `NioSocketChannel` 已经成功注册到 Sub Reactor 上。  
+当客户端 `NioSocketChannel` 中的 `pipeline` 初始化完毕后，Netty 开始调用 `safeSetSuccess(promise)` 方法，回调 `regFuture` 中注册的 `ChannelFutureListener`，通知客户端 `NioSocketChannel` 已经成功注册到 Sub Reactor 上。
 
 ```java
 childGroup.register(child).addListener(new ChannelFutureListener() {
@@ -956,13 +948,13 @@ childGroup.register(child).addListener(new ChannelFutureListener() {
 });
 ```
 
- 在服务端 `NioServerSocketChannel` 注册时，我们会在 `listener` 中向 Main Reactor 提交绑定端口地址的任务。然而，在 `NioSocketChannel` 注册时，只会在 `listener` 中处理注册失败的情况。  
+在服务端 `NioServerSocketChannel` 注册时，我们会在 `listener` 中向 Main Reactor 提交绑定端口地址的任务。然而，在 `NioSocketChannel` 注册时，只会在 `listener` 中处理注册失败的情况。
 
- 当 Sub Reactor 线程通知 `ChannelFutureListener` 注册成功之后，随后会调用 `pipeline.fireChannelRegistered()` 在客户端 `NioSocketChannel` 的 `pipeline` 中传播 `ChannelRegistered` 事件。  
+当 Sub Reactor 线程通知 `ChannelFutureListener` 注册成功之后，随后会调用 `pipeline.fireChannelRegistered()` 在客户端 `NioSocketChannel` 的 `pipeline` 中传播 `ChannelRegistered` 事件。
 
-**这里笔者重点强调**，在之前介绍 `NioServerSocketChannel` 注册时，我们提到由于此时 `NioServerSocketChannel` 并未绑定端口地址，因此它并未激活，此时的 `isActive()` 返回 `false`，`register0` 方法直接返回。  
+**这里笔者重点强调**，在之前介绍 `NioServerSocketChannel` 注册时，我们提到由于此时 `NioServerSocketChannel` 并未绑定端口地址，因此它并未激活，此时的 `isActive()` 返回 `false`，`register0` 方法直接返回。
 
- 服务端 `NioServerSocketChannel` 判断是否激活的标准为端口是否绑定成功。  
+服务端 `NioServerSocketChannel` 判断是否激活的标准为端口是否绑定成功。
 
 ```java
 public class NioServerSocketChannel extends AbstractNioMessageChannel
@@ -974,7 +966,7 @@ public class NioServerSocketChannel extends AbstractNioMessageChannel
 }
 ```
 
-客户端 `NioSocketChannel` 判断是否激活的标准为是否处于 Connected 状态。显然，此时它肯定是处于 Connected 状态的。  
+客户端 `NioSocketChannel` 判断是否激活的标准为是否处于 Connected 状态。显然，此时它肯定是处于 Connected 状态的。
 
 ```java
 @Override
@@ -984,7 +976,7 @@ public boolean isActive() {
 }
 ```
 
-`NioSocketChannel` 已经处于 Connected 状态，这里并不需要绑定端口，因此此时的 `isActive()` 返回 `true`。  
+`NioSocketChannel` 已经处于 Connected 状态，这里并不需要绑定端口，因此此时的 `isActive()` 返回 `true`。
 
 ```java
 if (isActive()) {
@@ -1001,7 +993,7 @@ if (isActive()) {
 }
 ```
 
-最后调用 `pipeline.fireChannelActive()` 在 `NioSocketChannel` 的 `pipeline` 中传播 `ChannelActive` 事件，最终在 `pipeline` 的头结点 `HeadContext` 中响应`ChannelActive`事件并注册 `OP_READ` 事件到 Sub Reactor 中的 `Selector` 上。  
+最后调用 `pipeline.fireChannelActive()` 在 `NioSocketChannel` 的 `pipeline` 中传播 `ChannelActive` 事件，最终在 `pipeline` 的头结点 `HeadContext` 中响应`ChannelActive`事件并注册 `OP_READ` 事件到 Sub Reactor 中的 `Selector` 上。
 
 <img src="https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410311650961.png?x-oss-process=image/watermark,image_aW1nL3dhdGVyLnBuZw==,g_nw,x_1,y_1" style="zoom:50%;" />
 
@@ -1026,11 +1018,11 @@ public abstract class AbstractNioChannel extends AbstractChannel { {
 }
 ```
 
- 注意，这里的 `readInterestOp` 为客户端 `NioSocketChannel` 在初始化时设置的 `OP_READ` 事件。  
+注意，这里的 `readInterestOp` 为客户端 `NioSocketChannel` 在初始化时设置的 `OP_READ` 事件。
 
-------
+---
 
- 到这里，Netty 中 Main Reactor 接收连接的整个流程就介绍完毕。此时，Netty 中主从 Reactor 组的结构变为：  
+到这里，Netty 中 Main Reactor 接收连接的整个流程就介绍完毕。此时，Netty 中主从 Reactor 组的结构变为：
 
 ![image-20241031165217159](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410311652414.png?x-oss-process=image/watermark,image_aW1nL3dhdGVyLnBuZw==,g_nw,x_1,y_1)
 

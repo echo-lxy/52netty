@@ -2,7 +2,7 @@
 
 ## 前言
 
-在完成了 [《网络通信层 》](/netty_source_code_parsing/main_task/network_communication_layer/socket_network_programming)的学习之后，我们终于可以正式开始 Netty 的源码学习了！
+在完成了 [《网络通信层 》](/netty_source_code_parsing/network_program/socket_network_programmingg)的学习之后，我们终于可以正式开始 Netty 的源码学习了！
 
 先来引出 Netty 中使用的 **主从 Reactor IO 线程模型**
 
@@ -280,7 +280,7 @@ public final class NioEventLoop extends SingleThreadEventLoop {
 
 这里就正式开始了 Reactor 的创建过程。我们知道，Reactor 的核心是采用 IO 多路复用模型来对客户端连接上的 IO 事件进行监听，因此最重要的任务是创建 Selector（JDK NIO 中 IO 多路复用技术的实现）。
 
-可以将 Selector 理解为我们在 [《IO 多路复用》](/netty_source_code_parsing/main_task/network_communication_layer/io_multiplexing) 中介绍的 `select`、`poll`、`epoll`。它是 JDK NIO 对操作系统内核提供的这些 IO 多路复用技术的封装。
+可以将 Selector 理解为我们在 [《IO 多路复用》](/netty_source_code_parsing/network_program/io_multiplexing) 中介绍的 `select`、`poll`、`epoll`。它是 JDK NIO 对操作系统内核提供的这些 IO 多路复用技术的封装。
 
 ##### openSelector()
 

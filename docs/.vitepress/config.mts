@@ -3,7 +3,6 @@ import { defineConfig, type DefaultTheme } from "vitepress"
 // https://vitepress.dev/reference/site-config
 export default defineConfig({
   title: "图解Netty",
-  base: "/",
   description: "图解Netty",
   lastUpdated: true,
   markdown: {

@@ -28,7 +28,7 @@
 
 :::
 
-在之前的文章中，笔者已经多次强调，Reactor 在处理 `Channel` 上的 IO 事件的入口函数为 `NioEventLoop#processSelectedKey`。  
+在之前的文章中，笔者已经多次强调，Reactor 在处理 `Channel` 上的 IO 事件的入口函数为 `NioEventLoop#processSelectedKey`。
 
 ```java
 public final class NioEventLoop extends SingleThreadEventLoop {
@@ -41,11 +41,11 @@ public final class NioEventLoop extends SingleThreadEventLoop {
             int readyOps = k.readyOps();
 
             if ((readyOps & SelectionKey.OP_CONNECT) != 0) {
-                // ..............处理 OP_CONNECT 事件................. 
+                // ..............处理 OP_CONNECT 事件.................
             }
 
             if ((readyOps & SelectionKey.OP_WRITE) != 0) {
-                // ..............处理 OP_WRITE 事件................. 
+                // ..............处理 OP_WRITE 事件.................
             }
 
             if ((readyOps & (SelectionKey.OP_READ | SelectionKey.OP_ACCEPT)) != 0 || readyOps == 0) {
@@ -75,9 +75,9 @@ public final class NioEventLoop extends SingleThreadEventLoop {
 
 ![image-20241031170318065](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410311703437.png?x-oss-process=image/watermark,image_aW1nL3dhdGVyLnBuZw==,g_ne,x_1,y_1)
 
-流程中相关置灰的步骤为Netty处理连接关闭时的逻辑，和本文主旨无关，我们这里暂时忽略，等后续笔者介绍连接关闭时，会单独开一篇文章详细为大家介绍。
+流程中相关置灰的步骤为 Netty 处理连接关闭时的逻辑，和本文主旨无关，我们这里暂时忽略，等后续笔者介绍连接关闭时，会单独开一篇文章详细为大家介绍。
 
-从上面这张Netty接收网络数据总体流程图可以看出NioSocketChannel在接收网络数据的整个流程和我们在上篇文章[Netty 如何接收网络连接](https://www.yuque.com/onejava/gwzrgm/tgcgqew4b8nlpxes)中介绍的NioServerSocketChannel在接收客户端连接时的流程在总体框架上是一样的。
+从上面这张 Netty 接收网络数据总体流程图可以看出 NioSocketChannel 在接收网络数据的整个流程和我们在上篇文章[Netty 如何接收网络连接](https://www.yuque.com/onejava/gwzrgm/tgcgqew4b8nlpxes)中介绍的 NioServerSocketChannel 在接收客户端连接时的流程在总体框架上是一样的。
 
 在接收网络数据的过程中，**NioSocketChannel** 也是通过一个 `do {...} while(...)` 循环的 **read loop** 不断循环读取连接 `NioSocketChannel` 上的数据。
 
@@ -108,8 +108,6 @@ b.group(bossGroup, workerGroup)
 
 基于这个原因，在 `read loop` 循环中，每当通过 `doReadBytes` 方法从 `NioSocketChannel` 中读取到数据时（方法返回值大于 0，并记录在 `allocHandle.lastBytesRead` 中），都需要通过 `allocHandle.incMessagesRead(1)` 方法统计已经读取的次数。当达到 16 次时，无论 `NioSocketChannel` 是否还有数据可读，都需要在 `read loop` 的末尾退出循环，转而执行 **Sub Reactor** 上的异步任务以及其他 `NioSocketChannel` 上的 IO 就绪事件。这种做法确保了事件的平均分配，保证了资源的合理利用。
 
-
-
 ```java
 public abstract class MaxMessageHandle implements ExtendedHandle {
 
@@ -124,7 +122,7 @@ public abstract class MaxMessageHandle implements ExtendedHandle {
 }
 ```
 
-本次read loop读取到的数据大小会记录在`allocHandle.lastBytesRead`中
+本次 read loop 读取到的数据大小会记录在`allocHandle.lastBytesRead`中
 
 ```java
 public abstract class MaxMessageHandle implements ExtendedHandle {
@@ -144,9 +142,9 @@ public abstract class MaxMessageHandle implements ExtendedHandle {
 }
 ```
 
-* `lastBytesRead < 0`：表示客户端主动发起了连接关闭流程，**Netty** 开始连接关闭处理流程。这个情况与本文的主旨无关，暂时不予讨论。后面笔者会专门用一篇文章详细解读关闭流程。
-* `lastBytesRead = 0`：表示当前 `NioSocketChannel` 上的数据已经全部读取完毕，没有数据可读了。本次 **OP_READ** 事件圆满处理完毕，可以愉快地退出 `read loop`。
-* `lastBytesRead > 0`：表示在本次 `read loop` 中从 `NioSocketChannel` 中读取到了数据。此时会在 `NioSocketChannel` 的 **pipeline** 中触发 **ChannelRead** 事件，进而在 **pipeline** 中负责 IO 处理的 **ChannelHandler** 中响应并处理网络请求。
+- `lastBytesRead < 0`：表示客户端主动发起了连接关闭流程，**Netty** 开始连接关闭处理流程。这个情况与本文的主旨无关，暂时不予讨论。后面笔者会专门用一篇文章详细解读关闭流程。
+- `lastBytesRead = 0`：表示当前 `NioSocketChannel` 上的数据已经全部读取完毕，没有数据可读了。本次 **OP_READ** 事件圆满处理完毕，可以愉快地退出 `read loop`。
+- `lastBytesRead > 0`：表示在本次 `read loop` 中从 `NioSocketChannel` 中读取到了数据。此时会在 `NioSocketChannel` 的 **pipeline** 中触发 **ChannelRead** 事件，进而在 **pipeline** 中负责 IO 处理的 **ChannelHandler** 中响应并处理网络请求。
 
 <img src="https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410311705508.png?x-oss-process=image/watermark,image_aW1nL3dhdGVyLnBuZw==,g_nw,x_1,y_1" alt="image-20241031170512440" style="zoom:50%;" />
 
@@ -205,7 +203,7 @@ Netty 服务端对一次 `OP_READ` 事件的处理，会在一个 `do { ... } wh
 
 需要特别注意的是，触发 `ChannelReadComplete` 事件并不代表 `NioSocketChannel` 中的数据已经读取完了，只能说明本次 `OP_READ` 事件处理完毕。因为有可能是客户端发送的数据太多，Netty 读了 16 次还没读完，那就只能等到下次 `OP_READ` 事件到来的时候再进行读取。
 
-------
+---
 
 以上内容就是 Netty 在接收客户端发送网络数据的全部核心逻辑。目前为止我们还未涉及到这部分的主干核心源码，笔者想的是先给大家把核心逻辑讲解清楚之后，这样理解起来核心主干源码会更加清晰透彻。
 
@@ -280,7 +278,7 @@ public final void read() {
 
 这里再次强调，当前执行线程为 Sub Reactor 线程，处理连接数据读取逻辑是在 `NioSocketChannel` 中。
 
-首先，通过 `config()` 获取客户端 `NioSocketChannel` 的 Channel 配置类 `NioSocketChannelConfig`。接着，通过 `pipeline()` 获取 `NioSocketChannel` 的 pipeline。在 Netty 服务端模板 EchoServer  所举的示例中，`NioSocketChannel` 的 pipeline 中只有一个 `EchoChannelHandler`。
+首先，通过 `config()` 获取客户端 `NioSocketChannel` 的 Channel 配置类 `NioSocketChannelConfig`。接着，通过 `pipeline()` 获取 `NioSocketChannel` 的 pipeline。在 Netty 服务端模板 EchoServer 所举的示例中，`NioSocketChannel` 的 pipeline 中只有一个 `EchoChannelHandler`。
 
 <img src="https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410311650961.png?x-oss-process=image/watermark,image_aW1nL3dhdGVyLnBuZw==,g_nw,x_1,y_1" alt="image-20241031165026880" style="zoom:50%;" />
 
@@ -295,7 +293,7 @@ final ByteBufAllocator allocator = config.getAllocator();
 final RecvByteBufAllocator.Handle allocHandle = recvBufAllocHandle();
 ```
 
-在上篇文章[《处理 OP_ACCEPT 事件》](/netty_source_code_parsing/main_task/event_scheduling_layer/io/OP_ACCEPT)中，笔者为了阐述上篇文章中提到的Netty在接收网络连接时的Bug时，简单和大家介绍了下这个`RecvByteBufAllocator`。
+在上篇文章[《处理 OP_ACCEPT 事件》](/netty_source_code_parsing/main_task/event_scheduling_layer/io/OP_ACCEPT)中，笔者为了阐述上篇文章中提到的 Netty 在接收网络连接时的 Bug 时，简单和大家介绍了下这个`RecvByteBufAllocator`。
 
 **在这两个 `ByteBuffer` 各自的区别和联系如下：**
 
@@ -304,7 +302,7 @@ final RecvByteBufAllocator.Handle allocHandle = recvBufAllocHandle();
 
 总结来说，`ByteBufAllocator` 主要用于内存的分配，而 `RecvByteBufAllocator` 则用于接收数据时的动态内存分配策略。两者共同协作，以提高 Netty 在处理 IO 数据时的性能和灵活性。
 
-而在本文中NioSocketChannelConfig中的RecvByteBufAllocator类型为AdaptiveRecvByteBufAllocator。
+而在本文中 NioSocketChannelConfig 中的 RecvByteBufAllocator 类型为 AdaptiveRecvByteBufAllocator。
 
 ![img](https://cdn.nlark.com/yuque/0/2024/png/35210587/1729900833842-c59f3a45-cee4-492b-8148-842224a9e416.png)
 
@@ -331,7 +329,7 @@ public class AdaptiveRecvByteBufAllocator extends DefaultMaxMessagesRecvByteBufA
     public Handle newHandle() {
         return new HandleImpl(minIndex, maxIndex, initial);
     }
-    
+
     private final class HandleImpl extends MaxMessageHandle {
                   .................省略................
     }
@@ -360,7 +358,7 @@ public abstract class MaxMessageHandle implements ExtendedHandle {
 
     //本次read loop读取到的字节数
     private int lastBytesRead;
-    
+
     //预计下一次分配buffer的容量，初始：2048
     private int nextReceiveBufferSize;
     ...........省略.............
@@ -465,7 +463,7 @@ public class NioSocketChannel extends AbstractNioByteChannel implements io.netty
     @Override
     protected int doReadBytes(ByteBuf byteBuf) throws Exception {
         final RecvByteBufAllocator.Handle allocHandle = unsafe().recvBufAllocHandle();
-        allocHandle.attemptedBytesRead(byteBuf.writableBytes());    
+        allocHandle.attemptedBytesRead(byteBuf.writableBytes());
         return byteBuf.writeBytes(javaChannel(), allocHandle.attemptedBytesRead());
     }
 }
@@ -517,7 +515,7 @@ public class DefaultChannelConfig implements ChannelConfig {
 
 我们先来看一下 `AdaptiveRecvByteBufAllocator` 类的初始化都做了些什么事情：
 
-### AdaptiveRecvByteBufAllocator类的初始化
+### AdaptiveRecvByteBufAllocator 类的初始化
 
 ```java
 public class AdaptiveRecvByteBufAllocator extends DefaultMaxMessagesRecvByteBufAllocator {
@@ -564,7 +562,7 @@ public class AdaptiveRecvByteBufAllocator extends DefaultMaxMessagesRecvByteBufA
 
 ![image-20241101131434177](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202411011314269.png)
 
-- 当索引容量大于`512`时，`SIZE_TABLE`中定义的容量索引是按前一个索引容量的2倍递增。
+- 当索引容量大于`512`时，`SIZE_TABLE`中定义的容量索引是按前一个索引容量的 2 倍递增。
 
 ![image-20241101131501035](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202411011315099.png)
 
@@ -610,7 +608,7 @@ public abstract class AbstractNioByteChannel extends AbstractNioChannel {
 }
 ```
 
-在每轮read loop结束之后，我们都会调用`allocHandle.readComplete()`来根据在allocHandle中统计的在本轮read loop中读取字节总大小，来决定在下一轮read loop中是否对DirectByteBuffer进行扩容或者缩容。
+在每轮 read loop 结束之后，我们都会调用`allocHandle.readComplete()`来根据在 allocHandle 中统计的在本轮 read loop 中读取字节总大小，来决定在下一轮 read loop 中是否对 DirectByteBuffer 进行扩容或者缩容。
 
 ```java
 public abstract class MaxMessageHandle implements ExtendedHandle {
@@ -635,7 +633,7 @@ public abstract class MaxMessageHandle implements ExtendedHandle {
             nextReceiveBufferSize = SIZE_TABLE[index];
             decreaseNow = false;
         }
-    }        
+    }
 }
 ```
 
@@ -662,15 +660,15 @@ public abstract class MaxMessageHandle implements ExtendedHandle {
 
 满足一次扩容条件就进行扩容，并且扩容步长为 4，扩容过程较为奔放。
 
-### AdaptiveRecvByteBufAllocator类的实例化
+### AdaptiveRecvByteBufAllocator 类的实例化
 
-AdaptiveRecvByteBufAllocator类的实例化主要是确定ByteBuffer的初始容量，以及最小容量和最大容量在扩缩容索引表`SIZE_TABLE`中的下标：`minIndex`和`maxIndex`。
+AdaptiveRecvByteBufAllocator 类的实例化主要是确定 ByteBuffer 的初始容量，以及最小容量和最大容量在扩缩容索引表`SIZE_TABLE`中的下标：`minIndex`和`maxIndex`。
 
-AdaptiveRecvByteBufAllocator定义了三个关于ByteBuffer容量的字段：
+AdaptiveRecvByteBufAllocator 定义了三个关于 ByteBuffer 容量的字段：
 
-- `DEFAULT_MINIMUM` ：表示ByteBuffer最小的容量，默认为`64`，也就是无论ByteBuffer在怎么缩容，容量也不会低于`64`。
-- `DEFAULT_INITIAL`：表示ByteBuffer的初始化容量。默认为`2048`。
-- `DEFAULT_MAXIMUM` ：表示ByteBuffer的最大容量，默认为`65536`，也就是无论ByteBuffer在怎么扩容，容量也不会超过`65536`。
+- `DEFAULT_MINIMUM` ：表示 ByteBuffer 最小的容量，默认为`64`，也就是无论 ByteBuffer 在怎么缩容，容量也不会低于`64`。
+- `DEFAULT_INITIAL`：表示 ByteBuffer 的初始化容量。默认为`2048`。
+- `DEFAULT_MAXIMUM` ：表示 ByteBuffer 的最大容量，默认为`65536`，也就是无论 ByteBuffer 在怎么扩容，容量也不会超过`65536`。
 
 ```java
 public class AdaptiveRecvByteBufAllocator extends DefaultMaxMessagesRecvByteBufAllocator {
@@ -684,7 +682,7 @@ public class AdaptiveRecvByteBufAllocator extends DefaultMaxMessagesRecvByteBufA
     }
 
     public AdaptiveRecvByteBufAllocator(int minimum, int initial, int maximum) {
-       
+
          .................省略异常检查逻辑.............
 
         //计算minIndex maxIndex
@@ -709,13 +707,13 @@ public class AdaptiveRecvByteBufAllocator extends DefaultMaxMessagesRecvByteBufA
 }
 ```
 
-接下来的事情就是确定最小容量DEFAULT_MINIMUM 在SIZE_TABLE中的下标`minIndex`，以及最大容量DEFAULT_MAXIMUM 在SIZE_TABLE中的下标`maxIndex`。
+接下来的事情就是确定最小容量 DEFAULT_MINIMUM 在 SIZE_TABLE 中的下标`minIndex`，以及最大容量 DEFAULT_MAXIMUM 在 SIZE_TABLE 中的下标`maxIndex`。
 
-从AdaptiveRecvByteBufAllocator类初始化的过程中，我们可以看出SIZE_TABLE中存储的数据特征是一个有序的集合。
+从 AdaptiveRecvByteBufAllocator 类初始化的过程中，我们可以看出 SIZE_TABLE 中存储的数据特征是一个有序的集合。
 
-我们可以通过**二分查找**在SIZE_TABLE中找出`第一个`容量大于等于DEFAULT_MINIMUM的容量索引`minIndex`。
+我们可以通过**二分查找**在 SIZE_TABLE 中找出`第一个`容量大于等于 DEFAULT_MINIMUM 的容量索引`minIndex`。
 
-同理通过**二分查找**在SIZE_TABLE中找出`最后一个`容量小于等于DEFAULT_MAXIMUM的容量索引`maxIndex`。
+同理通过**二分查找**在 SIZE_TABLE 中找出`最后一个`容量小于等于 DEFAULT_MAXIMUM 的容量索引`maxIndex`。
 
 根据上一小节关于`SIZE_TABLE`中容量数据分布的截图，我们可以看出`minIndex = 3`，`maxIndex = 38`
 
@@ -747,9 +745,9 @@ private static int getSizeTableIndex(final int size) {
 }
 ```
 
-经常刷LeetCode的小伙伴肯定一眼就看出这个是**二分查找的模板**了。
+经常刷 LeetCode 的小伙伴肯定一眼就看出这个是**二分查找的模板**了。
 
-它的目的就是根据给定容量，在扩缩容索引表`SIZE_TABLE`中，通过**二分查找**找到`最贴近`给定size的容量的索引下标（第一个大于等于 size的容量）
+它的目的就是根据给定容量，在扩缩容索引表`SIZE_TABLE`中，通过**二分查找**找到`最贴近`给定 size 的容量的索引下标（第一个大于等于 size 的容量）
 
 ### RecvByteBufAllocator.Handle
 
@@ -819,7 +817,7 @@ public class AdaptiveRecvByteBufAllocator extends DefaultMaxMessagesRecvByteBufA
 - **`nextReceiveBufferSize`**：预计下一次分配 buffer 的容量，初始为 `2048`。在每次申请内存分配 `ByteBuffer` 的时候，采用 `nextReceiveBufferSize` 的值指定容量。
 - **`decreaseNow`**：是否需要进行缩容。
 
-## 使用堆外内存为ByteBuffer分配内存
+## 使用堆外内存为 ByteBuffer 分配内存
 
 **AdaptiveRecvByteBufAllocator** 类只是负责动态调整 `ByteBuffer` 的容量，而具体为 `ByteBuffer` 申请内存空间的是由 **`PooledByteBufAllocator`** 负责。
 
@@ -829,7 +827,7 @@ public class AdaptiveRecvByteBufAllocator extends DefaultMaxMessagesRecvByteBufA
 
 然而，JVM 在进行垃圾回收时会发生 `stop the world`，这会对应用程序的性能造成一定影响。
 
-此外，在[《从内核角度看 IO 模型》](/netty_source_code_parsing/main_task/network_communication_layer/io_model)一文中提到，当数据达到网卡时，网卡会通过 DMA 的方式将数据拷贝到内核空间中，这是 **第一次拷贝**。当用户线程在用户空间发起系统 IO 调用时，CPU 会将内核空间的数据再次拷贝到用户空间，这就是 **第二次拷贝**。
+此外，在[《从内核角度看 IO 模型》](/netty_source_code_parsing/network_program/io_model)一文中提到，当数据达到网卡时，网卡会通过 DMA 的方式将数据拷贝到内核空间中，这是 **第一次拷贝**。当用户线程在用户空间发起系统 IO 调用时，CPU 会将内核空间的数据再次拷贝到用户空间，这就是 **第二次拷贝**。
 
 与此不同的是，当我们在 JVM 中发起 IO 调用时，比如使用 JVM 堆内存读取 `Socket` 接收缓冲区中的数据时，**会多一次内存拷贝**。在 **第二次拷贝** 中，CPU 将数据从内核空间拷贝到用户空间，此时的用户空间在 JVM 角度是 **堆外内存**，因此还需要将堆外内存中的数据拷贝到 **堆内内存** 中。这就是 **第三次内存拷贝**。
 
@@ -857,7 +855,7 @@ public class AdaptiveRecvByteBufAllocator extends DefaultMaxMessagesRecvByteBufA
 
 **`PooledByteBufAllocator` 类的这个前缀 `Pooled` 就是 `内存池` 的意思，这个类会使用 Netty 的内存池为 `ByteBuffer` 分配 `堆外内存`。**
 
-### PooledByteBufAllocator的创建
+### PooledByteBufAllocator 的创建
 
 #### 创建时机
 
@@ -880,7 +878,7 @@ public class DefaultChannelConfig implements ChannelConfig {
 public interface ByteBufAllocator {
 
     ByteBufAllocator DEFAULT = ByteBufUtil.DEFAULT_ALLOCATOR;
-    
+
     ..................省略............
 }
 public final class ByteBufUtil {
@@ -905,7 +903,7 @@ public final class ByteBufUtil {
         }
 
         DEFAULT_ALLOCATOR = alloc;
-        
+
         ...................省略..................
     }
 }

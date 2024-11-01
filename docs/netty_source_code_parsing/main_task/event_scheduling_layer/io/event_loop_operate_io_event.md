@@ -2,17 +2,13 @@
 
 ## 前言
 
-在[《核心引擎 Reactor 的运转架构》](/netty_source_code_parsing/main_task/event_scheduling_layer/reactor_dispatch)中，我们得知Reactor线程在轮询过程中会去不断轮询捕获 IO 事件并处理，对标如下代码
+在[《核心引擎 Reactor 的运转架构》](/netty_source_code_parsing/main_task/event_scheduling_layer/reactor_dispatch)中，我们得知 Reactor 线程在轮询过程中会去不断轮询捕获 IO 事件并处理，对标如下代码
 
 ![img](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410301622577.png)
 
 也就是下图红框处
 
 <img src="https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410311634691.png?x-oss-process=image/watermark,image_aW1nL3dhdGVyLnBuZw==,g_nw,x_1,y_1" alt="image-20241031163402539" style="zoom:33%;" />
-
-
-
-
 
 本文旨在说明 Reactor 是如何去捕获到 IO 就绪事件的，以及 IO 事件的注册时机
 
@@ -24,21 +20,21 @@
 
 ## Netty 对 Java NIO Selector 的优化
 
-首先，在 `NioEventLoop` 中有一个 `Selector` 优化开关 `DISABLE_KEY_SET_OPTIMIZATION`，可以通过系统变量 `-Dio.netty.noKeySetOptimization` 指定，默认是开启的。这表示 Netty 会对 JDK NIO 原生 `Selector` 进行优化。  
+首先，在 `NioEventLoop` 中有一个 `Selector` 优化开关 `DISABLE_KEY_SET_OPTIMIZATION`，可以通过系统变量 `-Dio.netty.noKeySetOptimization` 指定，默认是开启的。这表示 Netty 会对 JDK NIO 原生 `Selector` 进行优化。
 
 ![img](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410301622626.png)
 
- 如果优化开关 `DISABLE_KEY_SET_OPTIMIZATION` 被关闭，那么 Netty 将直接返回 JDK NIO 原生的 `Selector`，不进行任何优化。  
+如果优化开关 `DISABLE_KEY_SET_OPTIMIZATION` 被关闭，那么 Netty 将直接返回 JDK NIO 原生的 `Selector`，不进行任何优化。
 
 ![img](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410301622618.png)
 
-**下面为Netty对JDK NIO原生的Selector的优化过程：**
+**下面为 Netty 对 JDK NIO 原生的 Selector 的优化过程：**
 
-1. 获取`JDK NIO原生Selector`的抽象实现类`sun.nio.ch.SelectorImpl`。`JDK NIO原生Selector`的实现均继承于该抽象类。用于判断由`SelectorProvider`创建出来的`Selector`是否为`JDK默认实现`（`SelectorProvider`第三种加载方式）。因为`SelectorProvider`可以是自定义加载，所以它创建出来的`Selector`并不一定是JDK NIO 原生的。
+1. 获取`JDK NIO原生Selector`的抽象实现类`sun.nio.ch.SelectorImpl`。`JDK NIO原生Selector`的实现均继承于该抽象类。用于判断由`SelectorProvider`创建出来的`Selector`是否为`JDK默认实现`（`SelectorProvider`第三种加载方式）。因为`SelectorProvider`可以是自定义加载，所以它创建出来的`Selector`并不一定是 JDK NIO 原生的。
 
 ![img](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410301622684.png)
 
-JDK NIO Selector的抽象类`sun.nio.ch.SelectorImpl`
+JDK NIO Selector 的抽象类`sun.nio.ch.SelectorImpl`
 
 ```java
 public abstract class SelectorImpl extends AbstractSelector {
@@ -74,32 +70,34 @@ public abstract class SelectorImpl extends AbstractSelector {
 }
 ```
 
-这里笔者来简单介绍下JDK NIO中的`Selector`中这几个字段的含义，我们可以和[《IO 多路复用》](/netty_source_code_parsing/main_task/network_communication_layer/io_multiplexing)讲到的epoll在内核中的结构做类比，方便大家后续的理解：
+这里笔者来简单介绍下 JDK NIO 中的`Selector`中这几个字段的含义，我们可以和[《IO 多路复用》](/netty_source_code_parsing/network_program/io_multiplexing)讲到的 epoll 在内核中的结构做类比，方便大家后续的理解：
 
 ![img](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/image-20241029235334293.png)
 
 在 `Selector` 中的几个关键集合和字段与 `Epoll` 机制类似：
 
 - `Set<SelectionKey> selectedKeys`：
+
   - `selectedKeys` 可以类比为 `Epoll` 中的就绪队列 `eventpoll->rdllist`，存放所有当前 I/O 就绪的 `Channel`，也就是已经满足操作条件的通道。
   - 每当 `Selector` 监听到某个 `Channel` 就绪，就将对应的 `SelectionKey` 添加到 `selectedKeys` 中。
   - `SelectionKey` 可以理解为 `Channel` 在 `Selector` 中的一个标记，与 `epoll_event` 类似，封装了 I/O 就绪的 `Socket` 信息。
 
 - `HashSet<SelectionKey> keys`：
+
   - `keys` 存放所有注册到该 `Selector` 的 `Channel`，与 `epoll` 中管理所有文件描述符的红黑树结构 `rb_root` 类似。
   - 当 `Channel` 注册到 `Selector` 后，会生成对应的 `SelectionKey`，并将该 `SelectionKey` 添加到 `keys` 中。
 
 - `Set<SelectionKey> publicSelectedKeys`：
+
   - `publicSelectedKeys` 是 `selectedKeys` 的外部视图，外部线程可以通过该集合获取所有 I/O 就绪的 `SelectionKey`。
   - 这个集合为只读视图，外部线程只能删除元素，不能增加，并且集合不是线程安全的，以避免多线程并发写入导致的问题。
 
 - `Set<SelectionKey> publicKeys`：
   - `publicKeys` 是 `keys` 的不可变视图，外部线程可以通过它获取所有注册到该 `Selector` 上的 `SelectionKey`。
 
-
 **这里需要重点关注抽象类**`sun.nio.ch.SelectorImpl`**中的**`selectedKeys`**和**`publicSelectedKeys`**这两个字段，注意它们的类型都是**`HashSet`**，一会优化的就是这里！！！！**
 
-2. 判断由`SelectorProvider`创建出来的`Selector`是否是JDK NIO原生的`Selector`实现。**因为Netty优化针对的是JDK NIO 原生**`Selector`。判断标准为`sun.nio.ch.SelectorImpl`类是否为`SelectorProvider`创建出`Selector`的父类。如果不是则直接返回。不在继续下面的优化过程。
+2. 判断由`SelectorProvider`创建出来的`Selector`是否是 JDK NIO 原生的`Selector`实现。**因为 Netty 优化针对的是 JDK NIO 原生**`Selector`。判断标准为`sun.nio.ch.SelectorImpl`类是否为`SelectorProvider`创建出`Selector`的父类。如果不是则直接返回。不在继续下面的优化过程。
 
 ```java
 //判断是否可以对Selector进行优化，这里主要针对JDK NIO原生Selector的实现类进行优化，因为SelectorProvider可以加载的是自定义Selector实现
@@ -114,7 +112,7 @@ if (!(maybeSelectorImplClass instanceof Class) ||
 }
 ```
 
-通过前面对`SelectorProvider`的介绍我们知道，这里通过`provider.openSelector()`创建出来的`Selector`实现类为`KQueueSelectorImpl类`，它继承实现了`sun.nio.ch.SelectorImpl`，所以它是JDK NIO 原生的`Selector`实现
+通过前面对`SelectorProvider`的介绍我们知道，这里通过`provider.openSelector()`创建出来的`Selector`实现类为`KQueueSelectorImpl类`，它继承实现了`sun.nio.ch.SelectorImpl`，所以它是 JDK NIO 原生的`Selector`实现
 
 ```java
 class KQueueSelectorImpl extends SelectorImpl {}
@@ -131,9 +129,9 @@ class KQueueSelectorImpl extends SelectorImpl {}
 
 我们都知道`HashSet`底层数据结构是一个`哈希表`，由于`Hash冲突`这种情况的存在，所以导致对`哈希表`进行`插入`和`遍历`操作的性能不如对`数组`进行`插入`和`遍历`操作的性能好。
 
-还有一个重要原因是，数组可以利用CPU缓存的优势来提高遍历的效率。后面笔者会有一篇专门的文章来讲述利用CPU缓存行如何为我们带来性能优势。
+还有一个重要原因是，数组可以利用 CPU 缓存的优势来提高遍历的效率。后面笔者会有一篇专门的文章来讲述利用 CPU 缓存行如何为我们带来性能优势。
 
-所以Netty为了优化对`sun.nio.ch.SelectorImpl#selectedKeys`集合的`插入，遍历`性能，自己用`数组`这种数据结构实现了`SelectedSelectionKeySet`，用它来替换原来的`HashSet`实现。
+所以 Netty 为了优化对`sun.nio.ch.SelectorImpl#selectedKeys`集合的`插入，遍历`性能，自己用`数组`这种数据结构实现了`SelectedSelectionKeySet`，用它来替换原来的`HashSet`实现。
 
 ### SelectedSelectionKeySet
 
@@ -141,7 +139,7 @@ class KQueueSelectorImpl extends SelectorImpl {}
 
 - 初始化`SelectionKey[] keys`数组大小为`1024`，当数组容量不够时，扩容为原来的两倍大小。
 - 通过数组尾部指针`size`，在向数组插入元素的时候可以直接定位到插入位置`keys[size++]`。操作一步到位，不用像`哈希表`那样还需要解决`Hash冲突`。
-- 对数组的遍历操作也是如丝般顺滑，CPU直接可以在缓存行中遍历读取数组元素无需访问内存。比`HashSet`的迭代器`java.util.HashMap.KeyIterator` 遍历方式性能不知高到哪里去了。
+- 对数组的遍历操作也是如丝般顺滑，CPU 直接可以在缓存行中遍历读取数组元素无需访问内存。比`HashSet`的迭代器`java.util.HashMap.KeyIterator` 遍历方式性能不知高到哪里去了。
 
 ```java
 final class SelectedSelectionKeySet extends AbstractSet<SelectionKey> {
@@ -209,11 +207,9 @@ final class SelectedSelectionKeySet extends AbstractSet<SelectionKey> {
 }
 ```
 
-看到这里不禁感叹，从各种小的细节可以看出Netty对性能的优化简直淋漓尽致，对性能的追求令人发指。细节真的是魔鬼。
+看到这里不禁感叹，从各种小的细节可以看出 Netty 对性能的优化简直淋漓尽致，对性能的追求令人发指。细节真的是魔鬼。
 
-4. Netty通过反射的方式用`SelectedSelectionKeySet`替换掉`sun.nio.ch.SelectorImpl#selectedKeys`，`sun.nio.ch.SelectorImpl#publicSelectedKeys`这两个集合中原来`HashSet`的实现。
-
-
+4. Netty 通过反射的方式用`SelectedSelectionKeySet`替换掉`sun.nio.ch.SelectorImpl#selectedKeys`，`sun.nio.ch.SelectorImpl#publicSelectedKeys`这两个集合中原来`HashSet`的实现。
 
 - 反射获取`sun.nio.ch.SelectorImpl`类中`selectedKeys`和`publicSelectedKeys`。
 
@@ -238,7 +234,7 @@ if (PlatformDependent.javaVersion() >= 9 && PlatformDependent.hasUnsafe()) {
                 unwrappedSelector, publicSelectedKeysFieldOffset, selectedKeySet);
         return null;
     }
-    
+
 }
 ```
 
@@ -258,7 +254,7 @@ selectedKeysField.set(unwrappedSelector, selectedKeySet);
 publicSelectedKeysField.set(unwrappedSelector, selectedKeySet);
 ```
 
-5. 将与`sun.nio.ch.SelectorImpl`类中`selectedKeys`和`publicSelectedKeys`关联好的Netty优化实现`SelectedSelectionKeySet`，设置到`io.netty.channel.nio.NioEventLoop#selectedKeys`字段中保存。
+5. 将与`sun.nio.ch.SelectorImpl`类中`selectedKeys`和`publicSelectedKeys`关联好的 Netty 优化实现`SelectedSelectionKeySet`，设置到`io.netty.channel.nio.NioEventLoop#selectedKeys`字段中保存。
 
 ```java
 //会通过反射替换selector对象中的selectedKeySet保存就绪的selectKey
@@ -289,8 +285,8 @@ private static final class SelectorTuple {
 }
 ```
 
-- 所谓的`unwrappedSelector`是指被Netty优化过的JDK NIO原生Selector。
-- 所谓的`wrappedSelector`就是用`SelectedSelectionKeySetSelector`装饰类将`unwrappedSelector`和与`sun.nio.ch.SelectorImpl类`关联好的Netty优化实现`SelectedSelectionKeySet`封装装饰起来。
+- 所谓的`unwrappedSelector`是指被 Netty 优化过的 JDK NIO 原生 Selector。
+- 所谓的`wrappedSelector`就是用`SelectedSelectionKeySetSelector`装饰类将`unwrappedSelector`和与`sun.nio.ch.SelectorImpl类`关联好的 Netty 优化实现`SelectedSelectionKeySet`封装装饰起来。
 
 `wrappedSelector`会将所有对`Selector`的操作全部代理给`unwrappedSelector`，并在`发起轮询IO事件`的相关操作中，重置`SelectedSelectionKeySet`清空上一次的轮询结果。
 
@@ -359,8 +355,6 @@ final class SelectedSelectionKeySetSelector extends Selector {
 }
 ```
 
-
-
 ## processSelectedKeys
 
 ![img](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410301622553.png)
@@ -373,8 +367,6 @@ final class SelectedSelectionKeySetSelector extends Selector {
 
 - `**processSelectedKeysPlain**` 适合于简单的实现，容易理解，但在高并发场景下可能会引入性能问题。
 - `**processSelectedKeysOptimized**` 则通过直接数组操作来减少内存分配和垃圾回收压力，从而提高性能。特别是在高负载情况下，优化的方法能够显著提高处理效率。
-
-
 
 ### processSelectedKey
 
@@ -446,13 +438,11 @@ private void processSelectedKey(SelectionKey k, AbstractNioChannel ch) {
    3. 调用 `pipeline.fireChannelReadComplete()` 方法完成读操作；
    4. 最终执行 `removeReadOp()` 清除 **OP_READ** 事件。
 
-
-
-Netty 这里使用的判断方法很巧妙`if ((readyOps & SelectionKey.OP_CONNECT) != 0)`，用于判断就绪操作集和连接操作的位与运算是否为1，如果是，则说明当前就绪操作集中有连接操作。
+Netty 这里使用的判断方法很巧妙`if ((readyOps & SelectionKey.OP_CONNECT) != 0)`，用于判断就绪操作集和连接操作的位与运算是否为 1，如果是，则说明当前就绪操作集中有连接操作。
 
 ![img](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410301623538.png)
 
-这三行代码旨在取消对 OP_CONNECT 的监听，因为 连接是一次性的操作，一旦连接成功，后续就不需要再关注连接操作。如果在连接成功后不移除 `OP_CONNECT`，那么下次调用 `Selector.select()` 时会无条件返回，因为该键仍然被标记为可连接。这样可能导致无效的轮询和资源浪费。  
+这三行代码旨在取消对 OP_CONNECT 的监听，因为 连接是一次性的操作，一旦连接成功，后续就不需要再关注连接操作。如果在连接成功后不移除 `OP_CONNECT`，那么下次调用 `Selector.select()` 时会无条件返回，因为该键仍然被标记为可连接。这样可能导致无效的轮询和资源浪费。
 
 与连接操作不同，OP_WRITE 和 OP_READ 是可以多次出现的事件。通道可以随时准备好读取或写入数据。
 
@@ -461,9 +451,9 @@ Netty 这里使用的判断方法很巧妙`if ((readyOps & SelectionKey.OP_CONNE
 
 ::: tip 操作标志的管理
 
-* **动态调整**：对于 `OP_WRITE` 和 `OP_READ`，它们的状态是动态的，可能会在通道的生命周期内多次变化。通过管理这两个状态，可以确保在数据准备好时能够及时进行操作。
+- **动态调整**：对于 `OP_WRITE` 和 `OP_READ`，它们的状态是动态的，可能会在通道的生命周期内多次变化。通过管理这两个状态，可以确保在数据准备好时能够及时进行操作。
 
-- **移除条件**：在某些情况下，当没有更多数据可写或读取时，系统会自动处理 `OP_WRITE` 或 `OP_READ` 的状态，例如使用 `forceFlush()` 来清除 `OP_WRITE` 标志，当没有更多数据可写时，会自动移除该标志。
+* **移除条件**：在某些情况下，当没有更多数据可写或读取时，系统会自动处理 `OP_WRITE` 或 `OP_READ` 的状态，例如使用 `forceFlush()` 来清除 `OP_WRITE` 标志，当没有更多数据可写时，会自动移除该标志。
 
 :::
 
@@ -480,9 +470,9 @@ protected void doDeregister() throws Exception {
 
 void cancel(SelectionKey key) {
     key.cancel();
-    
+
     cancelledKeys ++;
-    
+
     // 当取消的 Key 超过默认阈值 256，needsToSelectAgain 设置为 true
     if (cancelledKeys >= CLEANUP_INTERVAL) {
         cancelledKeys = 0;
@@ -526,8 +516,6 @@ void cancel(SelectionKey key) {
 
 ![img](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410301624915.png)
 
-
-
 ### NioSocketChannel 对应事件
 
 #### OP_READ
@@ -546,7 +534,7 @@ void cancel(SelectionKey key) {
 
 #### OP_WRITE
 
-当我们在代码中调用 flush 时，也就是将我们要写入IO的数据从用户态中的缓冲区刷入TCP 缓冲区中，因为TCP通过滑动窗口机制去控制它的发送方的发送速度，所以当接收方以及网络传输速度跟不上发送方发送数据的速度时，发送方的TCP缓冲区就会被打满，这时候我们的flush就会失效，因为内核TCP缓冲区已经被打满了，再怎么写也写不进去数据，然后这时候Netty捕捉到了这个“异常”，就会对当前文件描述符注册 OP_WRITE 事件，当其缓冲区能写入数据的时候，会产生 OP_WRITE 事件，然后我们的Netty中的selector就会捕获到此事件，然后我们会再次将用户态中的数据刷到内核中的TCP缓冲区
+当我们在代码中调用 flush 时，也就是将我们要写入 IO 的数据从用户态中的缓冲区刷入 TCP 缓冲区中，因为 TCP 通过滑动窗口机制去控制它的发送方的发送速度，所以当接收方以及网络传输速度跟不上发送方发送数据的速度时，发送方的 TCP 缓冲区就会被打满，这时候我们的 flush 就会失效，因为内核 TCP 缓冲区已经被打满了，再怎么写也写不进去数据，然后这时候 Netty 捕捉到了这个“异常”，就会对当前文件描述符注册 OP_WRITE 事件，当其缓冲区能写入数据的时候，会产生 OP_WRITE 事件，然后我们的 Netty 中的 selector 就会捕获到此事件，然后我们会再次将用户态中的数据刷到内核中的 TCP 缓冲区
 
 ![img](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410301625449.png)
 
@@ -570,8 +558,6 @@ void cancel(SelectionKey key) {
 
 ![img](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410301627580.png)
 
-
-
 ## 总结
 
-本文简单说明了 Netty 对 Java NIO 的优化，以及Netty如何分类处理IO事件的
+本文简单说明了 Netty 对 Java NIO 的优化，以及 Netty 如何分类处理 IO 事件的

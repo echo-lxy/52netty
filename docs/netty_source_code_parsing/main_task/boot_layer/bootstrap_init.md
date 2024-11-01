@@ -280,7 +280,7 @@ public final class NioEventLoop extends SingleThreadEventLoop {
 
 这里就正式开始了 Reactor 的创建过程。我们知道，Reactor 的核心是采用 IO 多路复用模型来对客户端连接上的 IO 事件进行监听，因此最重要的任务是创建 Selector（JDK NIO 中 IO 多路复用技术的实现）。
 
-可以将 Selector 理解为我们在 [《IO 多路复用》](/netty_source_code_parsing/main_task/network_communication_layer/io_multiplexing) 中介绍的 `select`、`poll`、`epoll`。它是 JDK NIO 对操作系统内核提供的这些 IO 多路复用技术的封装。
+可以将 Selector 理解为我们在 [《IO 多路复用》](/netty_source_code_parsing/network_program/io_multiplexing) 中介绍的 `select`、`poll`、`epoll`。它是 JDK NIO 对操作系统内核提供的这些 IO 多路复用技术的封装。
 
 ##### openSelector()
 

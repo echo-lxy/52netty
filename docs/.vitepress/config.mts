@@ -87,28 +87,34 @@ export default defineConfig({
             ],
           },
           {
+            text: "番外：网络编程基础",
+            collapsed: true,
+            items: [
+              {
+                text: "Socket 网络编程基础",
+                link: "/network_program/socket_network_programming",
+              },
+              {
+                text: "从内核角度看 IO 模型",
+                link: "/network_program/io_model",
+              },
+              {
+                text: "IO 多路复用",
+                link: "/network_program/io_multiplexing.md",
+              },
+              {
+                text: "IO 线程模型",
+                link: "/network_program/io_thread_model.md",
+              },
+            ],
+          },
+          {
             text: "第二部分：主线任务",
             collapsed: true,
             items: [
               {
                 text: "网络通信层",
                 items: [
-                  {
-                    text: "Socket 网络编程",
-                    link: "/main_task/network_communication_layer/socket_network_programming.md",
-                  },
-                  {
-                    text: "从内核角度看 IO 模型",
-                    link: "/main_task/network_communication_layer/io_model",
-                  },
-                  {
-                    text: "IO 多路复用",
-                    link: "/main_task/network_communication_layer/io_multiplexing.md",
-                  },
-                  {
-                    text: "IO 线程模型",
-                    link: "/main_task/network_communication_layer/io_thread_model.md",
-                  },
                   {
                     text: "JDK NIO 详解",
                     link: "/main_task/network_communication_layer/jdk_nio",

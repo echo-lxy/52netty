@@ -2,13 +2,11 @@
 
 ## 前言
 
-在 [《Socket 网络编程》](/netty_source_code_parsing/main_task/network_communication_layer/socket_network_programming) 中讲述了利用 Socket 编程进行双端 TCP 通信时的状态流程图
+在 [《Socket 网络编程》](/netty_source_code_parsing/network_program/socket_network_programming) 中讲述了利用 Socket 编程进行双端 TCP 通信时的状态流程图
 
 ![img](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410301658323.png)
 
 ![img](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410301658821.png)
-
-
 
 在 Netty 中，客户端的 `connect` 操作与服务端的 `accept` 操作对应。具体来说，**`OP_CONNECT`** 事件是客户端的概念，也就是连接发起方的操作。当客户端触发 `OP_CONNECT` 事件时，说明第二次握手成功了。
 
@@ -112,7 +110,7 @@ try {
 }
 ```
 
- 通过 `resolver.getResolver(eventLoop)` 获取与事件循环绑定的地址解析器 `resolver`。  
+通过 `resolver.getResolver(eventLoop)` 获取与事件循环绑定的地址解析器 `resolver`。
 
 #### 检查地址是否支持解析和已解析
 
@@ -126,7 +124,7 @@ if (!resolver.isSupported(remoteAddress) || resolver.isResolved(remoteAddress)) 
 - 检查解析器是否支持解析地址，或地址是否已解析。
 - 如果地址已解析或解析器不支持此地址，则直接调用 `doConnect` 方法，否则跳过解析步骤，进行连接。
 
-可以理解为如果是地址是域名，将其解析为IP地址，如果是IP地址，就不用解析了，直接进行连接
+可以理解为如果是地址是域名，将其解析为 IP 地址，如果是 IP 地址，就不用解析了，直接进行连接
 
 ![img](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410301719495.png)
 
@@ -169,13 +167,13 @@ resolveFuture.addListener(new FutureListener<SocketAddress>() {
 ```
 
 - 如果 `resolveFuture` 已完成，通过 `resolveFuture.cause()` 检查解析是否失败：
+
   - 若失败，则关闭 `channel` 并设置 `promise` 为失败。
   - 若成功，调用 `doConnect` 方法使用解析后的地址进行连接。
 
 - 如果 `resolveFuture` 尚未完成，则添加监听器 `FutureListener<SocketAddress>`。当解析完成时调用 `operationComplete` 方法：
   - 若解析失败，则关闭通道并设置 `promise` 为失败。
   - 若解析成功，使用解析后的地址调用 `doConnect` 方法进行连接。
-
 
 #### doConnect
 
@@ -187,7 +185,7 @@ resolveFuture.addListener(new FutureListener<SocketAddress>() {
 
 这里调用了 `connect` 操作，执行了出站处理器在流水线中的步骤。不同于入站操作从头开始，出站操作 `connect` 是从流水线尾部开始执行的。类似入站逻辑，`pipeline` 会依次找到下一个出站处理器，并回调其 `connect` 方法（可以自行调试看此过程，这里不再赘述）。
 
-**最终，CONNECT事件会到达 头结点`HeadContext`。**
+**最终，CONNECT 事件会到达 头结点`HeadContext`。**
 
 ![img](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410301718290.png)
 
@@ -205,13 +203,13 @@ resolveFuture.addListener(new FutureListener<SocketAddress>() {
 
 3. 如果连接未完成（返回 `false`），说明处于非阻塞模式，将 `promise` 和 `remoteAddress` 记录为待处理连接的 `connectPromise` 和 `requestedRemoteAddress`。
 
-###### NioSocketChannel.doConnect 
+###### NioSocketChannel.doConnect
 
 在尝试连接阶段会执行此方法
 
 ![img](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410301719197.png)
 
-可见此处的connnect方法属于 `立即返回`
+可见此处的 connnect 方法属于 `立即返回`
 
 ![image-20241101114321752](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202411011143816.png)
 
@@ -288,7 +286,6 @@ selectionKey().interestOps(SelectionKey.OP_CONNECT);
 :::
 
 当 Reactor 中的 `Selector` 捕获到 `OP_CONNECT` 就绪事件时，会取消连接事件的注册。随后调用 `unsafe.finishConnect()` 来完成连接后的处理。在 `finishConnect` 方法中，又调用了 `fulfillConnectPromise(connectPromise, wasActive)` 方法来处理连接成功的后续逻辑。
-
 
 ![img](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410301721446.png)
 

@@ -316,7 +316,7 @@ int set_nonblocking(int fd) {
 
 ### 服务器
 
-![img](https://i-blog.csdnimg.cn/blog_migrate/7e5d1638a844dd58219c1ec5b56293fe.png)
+![image-20241102010143029](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202411020101240.png)
 
 ## 总结
 

@@ -57,9 +57,14 @@ export default defineConfig({
     nav: [
       { text: "首页", link: "/" },
       {
-        text: "Netty 源码解析",
+        text: "《图解 Netty 源码》",
         link: "/netty_source_code_parsing/ready_to_go/introduce",
         activeMatch: "/netty_source_code_parsing",
+      },
+      {
+        text: "《Netty 进阶实战》",
+        link: "/netty_advanced_practical_skills/ready_to_go/introduce",
+        activeMatch: "/netty_advanced_practical_skills",
       },
     ],
 
@@ -250,6 +255,21 @@ export default defineConfig({
               {
                 text: "零拷贝",
                 link: "/other_feature/zero_copy.md",
+              },
+            ],
+          },
+        ],
+      },
+      "/netty_advanced_practical_skills": {
+        base: "/netty_advanced_practical_skills",
+        items: [
+          {
+            text: "第一部分：整装待发",
+            collapsed: true,
+            items: [
+              {
+                text: "《Netty 进阶实战》简介",
+                link: "/ready_to_go/introduce",
               },
             ],
           },

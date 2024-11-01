@@ -2,7 +2,7 @@
 
 ## 前言
 
-在完成了 [《网络通信层 》](/netty_source_code_parsing/network_program/socket_network_programmingg)的学习之后，我们终于可以正式开始 Netty 的源码学习了！
+在完成了 [《网络通信层 》](/netty_source_code_parsing/network_program/socket_network_programming)的学习之后，我们终于可以正式开始 Netty 的源码学习了！
 
 先来引出 Netty 中使用的 **主从 Reactor IO 线程模型**
 

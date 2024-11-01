@@ -31,7 +31,7 @@ Netty 是一个异步事件驱动的网络应用程序框架，用于快速开�
 
 在[《BootStrap 启动 Netty 服务》](/netty_source_code_parsing/main_task/boot_layer/bootstrap_run)中，我们最终创建出了如下 **Main Sub Reactor Group 模型**
 
-![img](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410311546798.png)
+![img](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410311546798.png?x-oss-process=image/watermark,image_aW1nL3dhdGVyLnBuZw==,g_nw,x_1,y_1)
 
 - **Main Reactor Group** 管理着 `NioServerSocketChannel`，用于接收客户端连接。在其 pipeline 中的 `ServerBootstrapAcceptor` 里初始化接收到的客户端连接，随后将初始化好的客户端连接注册到从 Reactor 线程组中。
 - **Sub Reactor Group** 主要负责监听和处理注册到其上的所有 `NioSocketChannel` 的 IO 就绪事件。
@@ -41,7 +41,7 @@ Netty 是一个异步事件驱动的网络应用程序框架，用于快速开�
 
 Reactor 与 Channel 之间的对应关系如下图所示：
 
-![image-20241031160743074](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410311607161.png)
+<img src="https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410311607161.png?x-oss-process=image/watermark,image_aW1nL3dhdGVyLnBuZw==,b_nw,x_1,y_1" alt="image-20241031160743074" style="zoom:33%;" />
 
 ------
 
@@ -77,11 +77,11 @@ Reactor 与 Channel 之间的对应关系如下图所示：
 
  可以看出，Netty 对 Reactor 线程的利用相当高效。如果当前没有 IO 就绪事件需要处理，Reactor 线程不会在此闲等待，而是会立即被唤醒，转而处理提交的异步任务和定时任务。因此，Reactor 线程可以说是 996 的典范，一刻不停歇地运作着。  
 
-![image-20241031160816422](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410311608510.png)
+<img src="https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410311608510.png?x-oss-process=image/watermark,image_aW1nL3dhdGVyLnBuZw==,g_nw,x_1,y_1" alt="image-20241031160816422" style="zoom:33%;" />
 
  在了解了 Reactor 线程的大概运行框架后，接下来我们将深入源码，查看其核心运转框架的实现。由于这部分源码较为庞大和复杂，笔者将先提取出其运行框架，以便于大家整体理解整个运行过程的全貌。  
 
-![image-20241031163518703](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410312247735.png)
+<img src="https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410312247735.png?x-oss-process=image/watermark,image_aW1nL3dhdGVyLnBuZw==,g_nw,x_1,y_1" alt="image-20241031163518703" style="zoom: 33%;" />
 
 上图所展示的就是 **Reactor** 整个工作体系的全貌，主要分为如下几个重要的工作模块：
 
@@ -322,7 +322,7 @@ int selectNow() throws IOException {
 
 ### 轮询逻辑
 
-![image-20241031161354101](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410311613278.png)
+<img src="https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410311613278.png?x-oss-process=image/watermark,image_aW1nL3dhdGVyLnBuZw==,g_nw,x_1,y_1" alt="image-20241031161354101" style="zoom:33%;" />
 
 ```java
 case SelectStrategy.SELECT:
@@ -357,7 +357,7 @@ case SelectStrategy.SELECT:
 
 Reactor 线程除了要轮询 Channel 上的 IO 就绪事件以及处理这些事件外，还有一个任务，就是负责执行 Netty 框架中的异步任务。
 
-![image-20241031161203653](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410311612707.png)
+<img src="https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410311612707.png?x-oss-process=image/watermark,image_aW1nL3dhdGVyLnBuZw==,g_nw,x_1,y_1" alt="image-20241031161203653" style="zoom:33%;" />
 
 在 Netty 框架中，异步任务分为三类：
 
@@ -620,7 +620,7 @@ Netty 通过 `ioRatio` 变量来调配 Reactor 线程在处理 IO 事件和执�
 
  无论何时，当有 IO 就绪事件到来时，Reactor 都需要保证 IO 事件被及时且完整地处理完。而 `ioRatio` 主要限制的是执行异步任务所需的时间，以防止 Reactor 线程在处理异步任务时花费过长时间，从而导致 I/O 事件得不到及时处理。  
 
-![image-20241031161128993](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410311611188.png)
+<img src="https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410311611188.png?x-oss-process=image/watermark,image_aW1nL3dhdGVyLnBuZw==,g_nw,x_1,y_1" alt="image-20241031161128993" style="zoom:33%;" />
 
 ```java
 // 调整 Reactor 线程执行 IO 事件和执行异步任务的 CPU 时间比例，默认 50，表示执行 IO 事件和异步任务的时间比例是一比一

@@ -236,7 +236,7 @@ ChannelFuture f = serverBootStrap.bind(PORT).sync();
 
 **接下来我们看一下 Netty 服务端在启动过程中究竟干了哪些事情？**
 
-![image-20241031154508926](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410311545151.png)
+![image-20241031154508926](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410311545151.png?x-oss-process=image/watermark,image_aW1nL3dhdGVyLnBuZw==,g_nw,x_1,y_1)
 
 我们先来从 Netty 服务端启动的入口函数 `bind` 开始我们今天的源码解析旅程：
 
@@ -295,7 +295,7 @@ private ChannelFuture doBind(final SocketAddress localAddress) {
 
 
 
-![image-20241031154643597](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410311546798.png)
+![image-20241031154643597](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410311546798.png?x-oss-process=image/watermark,image_aW1nL3dhdGVyLnBuZw==,g_nw,x_1,y_1)
 
 
 
@@ -733,7 +733,7 @@ private void doStartThread() {
 
 - Reactor 线程的核心工作之前已经介绍过：轮询所有注册在其上的 Channel 中的 IO 就绪事件，处理对应 Channel 上的 IO 事件，并执行异步任务。Netty 将这些核心工作封装在 `io.netty.channel.nio.NioEventLoop#run` 方法中。
 
-![image-20241031155333787](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410311553847.png)
+<img src="https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410311553847.png?x-oss-process=image/watermark,image_aW1nL3dhdGVyLnBuZw==,g_nw,x_1,y_1" alt="image-20241031155333787" style="zoom:33%;" />
 
 这里可能有点绕，我来给大家捋一捋。还记得我们之前创建 NioEventLoop传入的Executor吗
 
@@ -751,7 +751,7 @@ private void doStartThread() {
 
 此时，**Reactor** 中的任务队列中只有一个任务 `register0`。**Reactor** 线程启动后，将从任务队列中取出该任务进行执行。
 
-![image-20241031155433032](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410311554111.png)
+<img src="https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410311554111.png?x-oss-process=image/watermark,image_aW1nL3dhdGVyLnBuZw==,g_nw,x_1,y_1" alt="image-20241031155433032" style="zoom:33%;" />
 
  至此，`NioServerSocketChannel` 的注册工作正式拉开帷幕~~  
 
@@ -936,7 +936,7 @@ p.addLast(new ChannelInitializer<Channel>() {
 
 - 此时`Main Reactor`中的任务队列`taskQueue`结构变化为：
 
-![image-20241031155545425](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410311555526.png)
+<img src="https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410311555526.png?x-oss-process=image/watermark,image_aW1nL3dhdGVyLnBuZw==,g_nw,x_1,y_1" alt="image-20241031155545425" style="zoom:33%;" />
 
 添加`ServerBootstrapAcceptor`的任务是在初始化`NioServerSocketChannel`的时候向main reactor提交过去的。还记得吗？
 
@@ -1082,7 +1082,7 @@ private void register0(ChannelPromise promise) {
 
 此时`Reactor线程`中的`taskQueue`结构如下：
 
-![image-20241031155545425](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410311555526.png)
+<img src="https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410311555526.png?x-oss-process=image/watermark,image_aW1nL3dhdGVyLnBuZw==,g_nw,x_1,y_1" alt="image-20241031155545425" style="zoom:33%;" />
 
 Reactor 线程会先取出位于 `taskQueue` 队首的任务执行，这里是指向 `NioServerSocketChannel` 的 pipeline 中添加 `ServerBootstrapAcceptor` 的异步任务。
 
@@ -1326,11 +1326,11 @@ public abstract class AbstractNioChannel extends AbstractChannel {
 
 流程走到这里，Netty 服务端就真正的启动起来了，下一步就开始等待接收客户端连接了。大家此刻在来回看这副启动流程图，是不是清晰了很多呢？
 
-![image-20241031154508926](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410311545151.png)
+![image-20241031154508926](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410311545151.png?x-oss-process=image/watermark,image_aW1nL3dhdGVyLnBuZw==,g_nw,x_1,y_1)
 
 此时Netty的`Reactor模型`结构如下：
 
-![image-20241031154643597](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410311546798.png)
+![image-20241031154643597](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410311546798.png?x-oss-process=image/watermark,image_aW1nL3dhdGVyLnBuZw==,g_nw,x_1,y_1)
 
 ## 总结
 

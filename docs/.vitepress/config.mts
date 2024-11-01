@@ -72,7 +72,7 @@ export default defineConfig({
             collapsed: true,
             items: [
               {
-                text: "Netty 源码深度解析简介",
+                text: "《图解 Netty 源码》简介",
                 link: "/ready_to_go/introduce",
               },
               {
@@ -138,13 +138,14 @@ export default defineConfig({
                         link: "/main_task/event_scheduling_layer/io/event_loop_operate_io_event.md",
                       },
                       {
-                        text: "处理 OP_CONNECT 事件",
-                        link: "/main_task/event_scheduling_layer/io/OP_CONNECT.md",
-                      },
-                      {
                         text: "处理 OP_ACCEPT 事件",
                         link: "/main_task/event_scheduling_layer/io/OP_ACCEPT.md",
                       },
+                      {
+                        text: "处理 OP_CONNECT 事件",
+                        link: "/main_task/event_scheduling_layer/io/OP_CONNECT.md",
+                      },
+
                       {
                         text: "处理 OP_READ 事件",
                         link: "/main_task/event_scheduling_layer/io/OP_READ.md",
@@ -160,22 +161,22 @@ export default defineConfig({
               {
                 text: "服务编排层",
                 items: [
-                  {
-                    text: "分拣流水线：Pipline",
-                    link: "/main_task/service_orchestration_layer/pipeline.md",
-                  },
-                  {
-                    text: "分拣员：ChannelHandler",
-                    link: "/main_task/service_orchestration_layer/channelhandler.md",
-                  },
-                  {
-                    text: "分拣员的工作台：ChannelHandlerContext",
-                    link: "/main_task/service_orchestration_layer/ChannelHandlerContext.md",
-                  },
-                  {
-                    text: "货物：被传播的 IO 事件",
-                    link: "/main_task/service_orchestration_layer/io_event.md",
-                  },
+                  // {
+                  //   text: "分拣流水线：Pipline",
+                  //   link: "/main_task/service_orchestration_layer/pipeline.md",
+                  // },
+                  // {
+                  //   text: "分拣员：ChannelHandler",
+                  //   link: "/main_task/service_orchestration_layer/channelhandler.md",
+                  // },
+                  // {
+                  //   text: "分拣员的工作台：ChannelHandlerContext",
+                  //   link: "/main_task/service_orchestration_layer/ChannelHandlerContext.md",
+                  // },
+                  // {
+                  //   text: "货物：被传播的 IO 事件",
+                  //   link: "/main_task/service_orchestration_layer/io_event.md",
+                  // },
                 ],
               },
             ],
@@ -186,28 +187,28 @@ export default defineConfig({
             items: [
               {
                 text: "Netty 的内存管理机制简介",
-                link: "/memory_management/introduction",
+                // link: "/memory_management/introduction",
               },
               {
                 text: "数据载体",
                 items: [
-                  {
-                    text: "ByteBuf",
-                    link: "/memory_management/data_carrier/ByteBuf.md",
-                  },
+                  // {
+                  //   text: "ByteBuf",
+                  //   link: "/memory_management/data_carrier/ByteBuf.md",
+                  // },
                 ],
               },
               {
                 text: "池化技术",
                 items: [
-                  {
-                    text: "对象池",
-                    link: "/memory_management/pooling_techniques/object_pool.md",
-                  },
-                  {
-                    text: "内存池",
-                    link: "/memory_management/pooling_techniques/memory_pool.md",
-                  },
+                  // {
+                  //   text: "对象池",
+                  //   link: "/memory_management/pooling_techniques/object_pool.md",
+                  // },
+                  // {
+                  //   text: "内存池",
+                  //   link: "/memory_management/pooling_techniques/memory_pool.md",
+                  // },
                 ],
               },
             ],

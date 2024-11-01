@@ -460,7 +460,7 @@ Map<String, ChannelHandler> toMap();
 
 ### 构造方法
 
-![image-20241031192538897](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410311925136.png)
+![image-20241031192538897](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410311925136.png?x-oss-process=image/watermark,image_aW1nL3dhdGVyLnBuZw==,g_nw,x_1,y_1)
 
 
 
@@ -523,7 +523,7 @@ public class DefaultChannelPipeline implements ChannelPipeline {
 
 在前边的系列文章中笔者多次提到过，pipeline 的结构是由 ChannelHandlerContext 类型的节点构成的双向链表。其中头结点为 HeadContext ，尾结点为 TailContext 。其初始结构如下
 
-![image-20241031192717093](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410311927150.png)
+<img src="https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410311927150.png?x-oss-process=image/watermark,image_aW1nL3dhdGVyLnBuZw==,g_nw,x_1,y_1" alt="image-20241031192717093" style="zoom: 50%;" />
 
 ### 通过 ChannelInitializer 向 pipeline 添加 channelHandler
 
@@ -687,7 +687,7 @@ ServerBootstrap b = new ServerBootstrap();
 
 EchoServerHandler 为我们自定义的 ChannelHandler ，它被 @Sharable 注解标注，全局只有一个实例，被添加进多个 Channel 的 pipeline 中。从而会被多个 reactor 线程执行到。
 
-![image-20241031193319618](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410311933766.png)
+<img src="https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410311933766.png?x-oss-process=image/watermark,image_aW1nL3dhdGVyLnBuZw==,g_nw,x_1,y_1" alt="image-20241031193319618" style="zoom:50%;" />
 
 1. 为 ChannelHandler 创建其 ChannelHandlerContext ，用于封装 ChannelHandler 的名称，状态信息，执行上下文信息，以及用于感知 ChannelHandler 在 pipeline 中的位置信息。newContext 方法涉及的细节较多，后面我们单独介绍。
 2. 通过 addLast0 将新创建出来的 ChannelHandlerContext 插入到 pipeline 中末尾处。方法的逻辑很简单其实就是一个普通的双向链表插入操作。

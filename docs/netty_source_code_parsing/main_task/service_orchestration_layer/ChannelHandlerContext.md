@@ -91,7 +91,7 @@ public interface ChannelHandlerContext extends AttributeMap, ChannelInboundInvok
 
 ### 成员属性
 
-![img](https://cdn.nlark.com/yuque/0/2024/png/35210587/1729749640850-ec6c97b0-6ee5-44ba-ae12-2a07f2c43eab.png)
+【TODO】放图
 
 #### 双向链表
 

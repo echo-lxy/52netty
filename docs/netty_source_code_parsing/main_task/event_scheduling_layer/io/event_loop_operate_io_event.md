@@ -8,7 +8,7 @@
 
 也就是下图红框处
 
-![image-20241031163402539](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410311634691.png)
+<img src="https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410311634691.png?x-oss-process=image/watermark,image_aW1nL3dhdGVyLnBuZw==,g_nw,x_1,y_1" alt="image-20241031163402539" style="zoom:33%;" />
 
 
 

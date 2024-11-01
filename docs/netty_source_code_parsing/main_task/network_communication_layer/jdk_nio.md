@@ -86,7 +86,7 @@ class ConnectionPerThreadWithPool implements Runnable{
 
 在上述示例代码中，对于每一个新的网络连接，都会通过线程池分配一个专门的线程去负责 I/O 处理。每个线程独立处理自己负责的 Socket 连接的输入和输出。同时，服务器的监听线程也是独立的，这样任何 Socket 连接的输入和输出处理都不会阻塞后续新 Socket 连接的监听和建立，从而提升了服务器的吞吐量。这一实现方式早在 Tomcat 的早期版本中就得到了应用。
 
-![image-20241031143156001](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410311431102.png)
+<img src="https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410311431102.png?x-oss-process=image/watermark,image_aW1nL3dhdGVyLnBuZw==,g_nw,x_1,y_1" alt="image-20241031143156001" style="zoom:33%;" />
 
 这种设计模式被称为 **每连接每线程模型**（Connection Per Thread 模式）。在活动连接数不超过 1000 的情况下，这种模式表现良好，能够使每个连接专注于其 I/O 处理，且编程模型简单，无需过多考虑系统的过载和限流问题。此模型通常与线程池结合使用，线程池本身就充当了一个天然的漏斗，可以缓冲一些系统处理不了的连接或请求。
 
@@ -197,7 +197,7 @@ public class PollingNonBlockingTCPServer {
 
 这种轮询方法使用单线程依次检查每个连接的状态，对于少量连接的非阻塞 I/O 是可行的，但当客户端数量增加时，单线程轮询的效率会显著下降。 
 
-![image-20241031143503642](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410311435732.png)
+<img src="https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410311435732.png?x-oss-process=image/watermark,image_aW1nL3dhdGVyLnBuZw==,g_nw,x_1,y_1" alt="image-20241031143503642" style="zoom:33%;" />
 
 **总之，当面对十万甚至百万级连接时，传统的 BIO 模型已显得无能为力。**
 

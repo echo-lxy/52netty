@@ -21,11 +21,14 @@ hero:
     alt: 52Netty
 
 features:
-  - title: Feature A
+  - icon: 🖼️
+    title: 插图
     details: Lorem ipsum dolor sit amet, consectetur adipiscing elit
-  - title: Feature B
+  - icon: 👁️
+    title: 源码
     details: Lorem ipsum dolor sit amet, consectetur adipiscing elit
-  - title: Feature C
+  - icon: 💻
+    title: 实战
     details: Lorem ipsum dolor sit amet, consectetur adipiscing elit
 ---
 

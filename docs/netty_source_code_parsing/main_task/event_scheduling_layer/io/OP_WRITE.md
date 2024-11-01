@@ -2,7 +2,7 @@
 
 ## 前言
 
-在[处理 OP_READ 事件](/netty_source_code_parsing/main_task/event_scheduling_layer/io/OP_READ)一文中，我们介绍了 **Netty** 的 **SubReactor** 处理网络数据读取的完整过程。当 **Netty** 为我们读取了网络请求数据，并且我们在自己的业务线程中完成了业务处理后，就需要将业务处理结果返回给客户端。那么本文将介绍 **SubReactor** 如何处理网络数据发送的整个过程。
+在[《处理 OP_READ 事件》](/netty_source_code_parsing/main_task/event_scheduling_layer/io/OP_READ)一文中，我们介绍了 **Netty** 的 **Sub Reactor** 处理网络数据读取的完整过程。当 **Netty** 为我们读取了网络请求数据，并且我们在自己的业务线程中完成了业务处理后，通常需要将业务处理结果返回给客户端。本文将介绍 **Sub Reactor** 如何处理网络数据发送的整个过程。
 
 我们都知道 **Netty** 是一款高性能的异步事件驱动的网络通讯框架，既然是网络通讯框架，那么它主要做的事情就是：
 
@@ -15,9 +15,7 @@
 - **那么在什么情况下，Netty 才会向 SubReactor 去注册 OP_WRITE 事件呢？**
 - **Netty 又是如何对写操作做到异步处理的呢？**
 
-本文笔者将会为大家一一揭晓这些谜底。我们仍然以之前的 **EchoServer** 为例进行说明。
-
-
+本文笔者将为大家一一揭晓这些谜底。我们仍然以之前的 **EchoServer** 为例进行说明。
 
 ```java
 @Sharable
@@ -32,58 +30,28 @@ public class EchoServerHandler extends ChannelInboundHandlerAdapter {
 }
 ```
 
-我们在[处理 OP_READ 事件](/netty_source_code_parsing/main_task/event_scheduling_layer/io/OP_READ)一文中读取到的 ByteBuffer (这里的 Object msg)，直接发送回给客户端，用这个简单的例子来揭开 Netty 如何发送数据的序幕~~
+我们在[《处理 OP_READ 事件》](/netty_source_code_parsing/main_task/event_scheduling_layer/io/OP_READ)一文中读取到的 `ByteBuffer`（这里的 `Object msg`），直接发送回给客户端，用这个简单的例子来揭开 Netty 如何发送数据的序幕。
 
-在实际开发中，我们首先要通过解码器将读取到的 ByteBuffer 解码转换为我们的业务 Request 类，然后在业务线程中做业务处理，在通过编码器对业务 Response 类编码为 ByteBuffer ，最后利用 ChannelHandlerContext ctx 的引用发送响应数据。
+在实际开发中，我们首先要通过解码器将读取到的 `ByteBuffer` 解码转换为我们的业务 `Request` 类，然后在业务线程中进行业务处理。接着，通过编码器将业务 `Response` 类编码为 `ByteBuffer`，最后利用 `ChannelHandlerContext ctx` 的引用发送响应数据。
 
-本文我们只聚焦 Netty 写数据的过程，对于 Netty 编解码相关的内容，笔者会在后续的文章中专门介绍。
-
-
-
-## 1、ChannelHandlerContext
-
-![image-20241031170917402](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410311709468.png)
-
-通过前面几篇文章的介绍，我们知道 **Netty** 会为每个 **Channel** 分配一个 **pipeline**，该 **pipeline** 是一个双向链表的结构。**Netty** 中产生的 **IO** 异步事件会在这个 **pipeline** 中传播。
-
-**Netty** 中的 **IO** 异步事件大体上分为两类：
-
-- **Inbound 事件**：入站事件，例如前面介绍的 **ChannelActive** 事件和 **ChannelRead** 事件。这些事件会从 **pipeline** 的头结点 **HeadContext** 开始，一直向后传播。
-- **Outbound 事件**：出站事件，例如本文即将介绍的 **write** 事件和 **flush** 事件。出站事件会从相反的方向，即从后往前传播，直到 **HeadContext**，最终在 **HeadContext** 中完成出站事件的处理。
-
-- - 在本例中，使用 `channelHandlerContext.write()` 会使 **write** 事件从当前 **ChannelHandler**（即这里的 **EchoServerHandler**）开始，沿着 **pipeline** 向前传播。
-  - 而 `channelHandlerContext.channel().write()` 则会使 **write** 事件从 **pipeline** 的尾结点 **TailContext** 开始，向前传播直到 **HeadContext**。
+本文将专注于 Netty 写数据的过程，对于 Netty 编解码相关的内容，笔者会在后续的文章中专门介绍。
 
 
 
-而 pipeline 这样一个双向链表数据结构中的类型正是 ChannelHandlerContext  ，由 ChannelHandlerContext 包裹我们自定义的 IO 处理逻辑 ChannelHandler。
+## write 方法发送数据
 
-ChannelHandler 并不需要感知到它所处的 pipeline 中的上下文信息，只需要专心处理好 IO 逻辑即可，关于 pipeline 的上下文信息全部封装在 ChannelHandlerContext 中。
+### 传播 write 事件
 
-ChannelHandler 在 Netty 中的作用只是负责处理 IO 逻辑，比如编码，解码。它并不会感知到它在 pipeline 中的位置，更不会感知和它相邻的两个 ChannelHandler。**事实上 ChannelHandler也并不需要去关心这些，它唯一需要关注的就是处理所关心的异步事件**
+无论是在业务线程还是在 Sub Reactor 线程中完成业务处理后，我们都需要通过 `ChannelHandlerContext` 的引用，将 `write` 事件在 `pipeline` 中进行传播。然后，在 `pipeline` 中相应的 `ChannelHandler` 中监听 `write` 事件，以便对其进行自定义处理（比如常用的编码器），最终将事件传播到 `HeadContext` 中以执行发送数据的逻辑操作。
 
+前面提到 `Netty` 中有两个触发 `write` 事件传播的方法，它们的处理逻辑是相同的，只是它们在 `pipeline` 中的传播起点不同：
 
+- `channelHandlerContext.write()` 方法会从当前 `ChannelHandler` 开始在 `pipeline` 中向前传播 `write` 事件，直到 `HeadContext`。
+- `channelHandlerContext.channel().write()` 方法则会从 `pipeline` 的尾结点 `TailContext` 开始向前传播 `write` 事件，直到 `HeadContext`。
 
-而 ChannelHandlerContext 中维护了 pipeline 这个双向链表中的 pre 以及 next 指针，这样可以方便的找到与其相邻的 ChannelHandler ，并可以过滤出一些符合执行条件的 ChannelHandler。正如它的命名一样， ChannelHandlerContext  正是起到了维护 ChannelHandler 上下文的一个作用。而 Netty 中的异步事件在 pipeline 中的传播靠的就是这个 ChannelHandlerContext 。
+<img src="https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410311732837.png?x-oss-process=image/watermark,image_aW1nL3dhdGVyLnBuZw==,g_nw,x_1,y_1" alt="image-20241031173204745" style="zoom:50%;" />
 
-这样设计就使得 ChannelHandlerContext 和 ChannelHandler 的职责单一，各司其职，具有高度的可扩展性。
-
-
-
-## 2、write 事件的传播
-
-无论是在业务线程还是在 **SubReactor** 线程中完成业务处理后，我们都需要通过 **ChannelHandlerContext** 的引用，将 **write** 事件在 **pipeline** 中进行传播。然后，在 **pipeline** 中相应的 **ChannelHandler** 中监听 **write** 事件，以便对其进行自定义处理（比如常用的编码器），最终将事件传播到 **HeadContext** 中以执行发送数据的逻辑操作。
-
-前面提到 **Netty** 中有两个触发 **write** 事件传播的方法，它们的处理逻辑是相同的，只是它们在 **pipeline** 中的传播起点不同：
-
-- `channelHandlerContext.write()` 方法会从当前 **ChannelHandler** 开始在 **pipeline** 中向前传播 **write** 事件，直到 **HeadContext**。
-- `channelHandlerContext.channel().write()` 方法则会从 **pipeline** 的尾结点 **TailContext** 开始向前传播 **write** 事件，直到 **HeadContext**。
-
-![image-20241031173204745](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410311732837.png)
-
-在我们清楚了 write 事件的总体传播流程后，接下来就来看看在 write 事件传播的过程中Netty为我们作了些什么？这里我们以 channelHandlerContext.write() 方法为例说明。
-
-## 3、write 方法发送数据
+在我们了解了 `write` 事件的总体传播流程后，接下来看看在 `write` 事件传播过程中，Netty 为我们做了哪些处理。这里以 `channelHandlerContext.write()` 方法为例进行说明。
 
 ```java
 abstract class AbstractChannelHandlerContext implements ChannelHandlerContext, ResourceLeakHint {
@@ -102,9 +70,9 @@ abstract class AbstractChannelHandlerContext implements ChannelHandlerContext, R
 }
 ```
 
-这里我们看到 Netty 的写操作是一个异步操作，当我们在业务线程中调用 channelHandlerContext.write() 后，Netty 会给我们返回一个 ChannelFuture，我们可以在这个 ChannelFutrue 中添加 ChannelFutureListener ，这样当 Netty 将我们要发送的数据发送到底层 Socket 中时，Netty 会通过 ChannelFutureListener 通知我们写入结果。
+在这里我们看到，Netty 的写操作是**异步**的。当我们在业务线程中调用 `channelHandlerContext.write()` 后，Netty 会返回一个 `ChannelFuture`，我们可以在这个 `ChannelFuture` 中添加 `ChannelFutureListener`。这样，当 Netty 将我们要发送的数据写入到底层 Socket 时，它会通过 `ChannelFutureListener` 通知我们写入结果。
 
-下述是我们业务线代码
+以下是业务线中的代码
 
 ```java
 @Override
@@ -125,12 +93,12 @@ public void channelRead(final ChannelHandlerContext ctx, final Object msg) {
 }
 ```
 
-当异步事件在 pipeline 传播的过程中发生异常时，异步事件就会停止在 pipeline 中传播。所以我们在日常开发中，需要对写操作异常情况进行处理。
+当异步事件在 `pipeline` 中传播时发生异常，异步事件的传播将会停止。因此，在日常开发中，我们需要对写操作中的异常情况进行处理：
 
-- 其中 inbound 类异步事件发生异常时，**会触发exceptionCaught事件传播**。exceptionCaught 事件本身也是一种 inbound 事件，传播方向会从当前发生异常的 ChannelHandler 开始一直向后传播直到 TailContext。
-- 而 outbound 类异步事件发生异常时，**则不会触发exceptionCaught事件传播**。一般只是通知相关 ChannelFuture。但如果是 flush 事件在传播过程中发生异常，则会触发当前发生异常的 ChannelHandler 中 exceptionCaught 事件回调。
+- 对于 **inbound** 类异步事件发生异常时，**会触发 `exceptionCaught` 事件传播**。`exceptionCaught` 事件本身也是一种 inbound 事件，传播方向从发生异常的 `ChannelHandler` 开始，一直向后传播直到 `TailContext`。
+- 而对于 **outbound** 类异步事件发生异常时，**不会触发 `exceptionCaught` 事件传播**，通常只是通知相关的 `ChannelFuture`。但如果是 `flush` 事件在传播过程中发生异常，则会触发当前发生异常的 `ChannelHandler` 中的 `exceptionCaught` 事件回调。
 
-我们继续回归到写操作的主线上来~~~
+接下来，我们继续回归到写操作的主线来分析。
 
 ```java
 private void write(Object msg, boolean flush, ChannelPromise promise) {
@@ -164,178 +132,11 @@ private void write(Object msg, boolean flush, ChannelPromise promise) {
 }
 ```
 
-write 事件要向前在 pipeline 中传播，就需要在 pipeline 上找到下一个具有执行资格的 ChannelHandler，因为位于当前 ChannelHandler 前边的可能是 ChannelInboundHandler 类型的也可能是 ChannelOutboundHandler 类型的 ChannelHandler ，或者有可能压根就不关心 write 事件的 ChannelHandler（没有实现write回调方法）。
+`write` 事件在 `pipeline` 中向前传播时，需要找到下一个有执行资格的 `ChannelHandler`。因为当前 `ChannelHandler` 前面的处理器可能是 `ChannelInboundHandler` 类型，也可能是 `ChannelOutboundHandler` 类型，或者可能根本不关心 `write` 事件的处理（即没有实现 `write` 回调方法）。
 
-![image-20241031174147729](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410311741849.png)
+![image-20241031174147729](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410311741849.png?x-oss-process=image/watermark,image_aW1nL3dhdGVyLnBuZw==,g_nw,x_1,y_1)
 
- 在这里，我们需要使用 `findContextOutbound` 方法，在当前 `ChannelHandler` 前的链路中查找一个类型为 `ChannelOutboundHandler` 的处理器，并确保其覆盖实现了 `write` 回调方法。找到后，该 `ChannelHandler` 将作为下一个执行对象。   
-
-### 3.1、findContextOutbound
-
-```java
-private AbstractChannelHandlerContext findContextOutbound(int mask) {
-    AbstractChannelHandlerContext ctx = this;
-    //获取当前ChannelHandler的executor
-    EventExecutor currentExecutor = executor();
-    do {
-        //获取前一个ChannelHandler
-        ctx = ctx.prev;
-    } while (skipContext(ctx, currentExecutor, mask, MASK_ONLY_OUTBOUND));
-    return ctx;
-}
-//判断前一个ChannelHandler是否具有响应Write事件的资格
-private static boolean skipContext(
-        AbstractChannelHandlerContext ctx, EventExecutor currentExecutor, int mask, int onlyMask) {
-
-    return (ctx.executionMask & (onlyMask | mask)) == 0 ||
-            (ctx.executor() == currentExecutor && (ctx.executionMask & mask) == 0);
-}
-```
-
-`findContextOutbound` 方法接收一个掩码参数，用于指定向前查找具有特定执行资格的 `ChannelHandler`。在本例中，由于调用的是 `ChannelHandlerContext` 的 `write` 方法，因此 `flush = false`，传入的掩码为 `MASK_WRITE`。这表示我们需要向前查找覆盖实现了 `write` 回调方法的 `ChannelOutboundHandler`。  
-
-#### 3.1.1、掩码的巧妙应用
-
-Netty 中将 ChannelHandler 覆盖实现的一些异步事件回调方法用 int 型的掩码来表示，这样我们就可以通过这个掩码来判断当前 ChannelHandler 具有什么样的执行资格。
-
-```java
-final class ChannelHandlerMask {
-    ....................省略......................
-
-    static final int MASK_CHANNEL_ACTIVE = 1 << 3;
-    static final int MASK_CHANNEL_READ = 1 << 5;
-    static final int MASK_CHANNEL_READ_COMPLETE = 1 << 6;
-    static final int MASK_WRITE = 1 << 15;
-    static final int MASK_FLUSH = 1 << 16;
-
-   //outbound事件掩码集合
-   static final int MASK_ONLY_OUTBOUND =  MASK_BIND | MASK_CONNECT | MASK_DISCONNECT |
-            MASK_CLOSE | MASK_DEREGISTER | MASK_READ | MASK_WRITE | MASK_FLUSH;
-    ....................省略......................
-}
-```
-
-在 ChannelHandler 被添加进 pipeline 的时候，Netty 会根据当前 ChannelHandler 的类型以及其覆盖实现的异步事件回调方法，通过 ` | 运算` 向 ChannelHandlerContext#executionMask 字段添加该 ChannelHandler 的执行资格。
-
-```java
-abstract class AbstractChannelHandlerContext implements ChannelHandlerContext, ResourceLeakHint {
-
-    //ChannelHandler执行资格掩码
-    private final int executionMask;
-
-    ....................省略......................
-}
-```
-
-类似的掩码用法其实我们在前边的文章[?《一文聊透Netty核心引擎Reactor的运转架构》](https://mp.weixin.qq.com/s?__biz=Mzg2MzU3Mjc3Ng==&mid=2247484087&idx=1&sn=0c065780e0f05c23c8e6465ede86cba0&chksm=ce77c4f0f9004de63be369a664105708bc5975b52993f4a6df223caed34cc1ef6185a16acd75&scene=21#wechat_redirect)中也提到过，在 Channel 向对应的 Reactor 注册自己感兴趣的 IO 事件时，也是用到了一个 int 型的掩码 interestOps 来表示 Channel 感兴趣的 IO 事件集合。
-
-```java
-@Override
-protected void doBeginRead() throws Exception {
-
-    final SelectionKey selectionKey = this.selectionKey;
-    if (!selectionKey.isValid()) {
-        return;
-    }
-
-    readPending = true;
-
-    final int interestOps = selectionKey.interestOps();
-    /**
-     * 1：ServerSocketChannel 初始化时 readInterestOp设置的是OP_ACCEPT事件
-     * 2：SocketChannel 初始化时 readInterestOp设置的是OP_READ事件
-     * */
-    if ((interestOps & readInterestOp) == 0) {
-        //注册监听OP_ACCEPT或者OP_READ事件
-        selectionKey.interestOps(interestOps | readInterestOp);
-    }
-}
-```
-
-- 用 & 操作判断，某个事件是否在事件集合中：`(readyOps & SelectionKey.OP_CONNECT) != 0`
-- 用 | 操作向事件集合中添加事件：`interestOps | readInterestOp`
-- 从事件集合中删除某个事件，是通过先将要删除事件取反 ~ ，然后在和事件集合做 & 操作：`ops &= ~SelectionKey.OP_CONNECT`
-
-这部分内容笔者会在下篇文章全面介绍 pipeline 的时候详细讲解，大家这里只需要知道这里的掩码就是表示一个执行资格的集合。当前 ChannelHandler 的执行资格存放在它的 ChannelHandlerContext 中的 executionMask 字段中。
-
-#### 3.1.2、向前查找具有执行资格的ChannelOutboundHandler
-
-```java
-private AbstractChannelHandlerContext findContextOutbound(int mask) {
-    //当前ChannelHandler
-    AbstractChannelHandlerContext ctx = this;
-    //获取当前ChannelHandler的executor
-    EventExecutor currentExecutor = executor();
-    do {
-        //获取前一个ChannelHandler
-        ctx = ctx.prev;
-    } while (skipContext(ctx, currentExecutor, mask, MASK_ONLY_OUTBOUND));
-    return ctx;
-}
-
-//判断前一个ChannelHandler是否具有响应Write事件的资格
-private static boolean skipContext(
-        AbstractChannelHandlerContext ctx, EventExecutor currentExecutor, int mask, int onlyMask) {
-
-    return (ctx.executionMask & (onlyMask | mask)) == 0 ||
-            (ctx.executor() == currentExecutor && (ctx.executionMask & mask) == 0);
-}
-```
-
-之前我们提到，`ChannelHandlerContext` 不仅封装了 `ChannelHandler` 的执行资格掩码，还能够感知当前 `ChannelHandler` 在 `pipeline` 中的位置。这是因为 `ChannelHandlerContext` 维护了前驱指针 `prev` 和后驱指针 `next`。
-
-在这里，我们需要在 `pipeline` 中传播 `write` 事件，这是一种 **outbound** 事件，因此需要向前传播。通过 `ChannelHandlerContext` 的前驱指针 `prev`，可以获取当前 `ChannelHandler` 在 `pipeline` 中的前一个节点。
-
-```java
-ctx = ctx.prev;
-```
-
-通过 `skipContext` 方法判断前驱节点是否具有执行资格。如果前驱节点没有执行资格，则跳过该节点，继续向前查找。反之，如果前驱节点具有执行资格，则返回该节点并响应 `write` 事件。
-
-在 `write` 事件的传播场景中，执行资格指的是前驱 `ChannelHandler` 是否为 `ChannelOutboundHandler` 类型，并且它是否覆盖实现了 `write` 事件的回调方法。
-
-```java
-public class EchoChannelHandler extends ChannelOutboundHandlerAdapter {
-
-    @Override
-    public void write(ChannelHandlerContext ctx, Object msg, ChannelPromise promise) throws Exception {
-        super.write(ctx, msg, promise);
-    }
-}
-```
-
-#### 3.1.3、skipContext
-
- 该方法主要用于判断当前 `ChannelHandler` 的前驱节点是否具有 `mask` 掩码中包含的事件响应资格。方法参数中包含两个重要的掩码：  
-
-- `int onlyMask`：用来指定当前 `ChannelHandler` 需要符合的类型。
-
-- - `MASK_ONLY_OUTBOUND`：表示 `ChannelOutboundHandler` 类型的掩码。
-  - `MASK_ONLY_INBOUND`：表示 `ChannelInboundHandler` 类型的掩码。
-
-```java
-final class ChannelHandlerMask {
-
-    //outbound事件的掩码集合
-    static final int MASK_ONLY_OUTBOUND =  MASK_BIND | MASK_CONNECT | MASK_DISCONNECT |
-            MASK_CLOSE | MASK_DEREGISTER | MASK_READ | MASK_WRITE | MASK_FLUSH;
-
-    //inbound事件的掩码集合
-    static final int MASK_ONLY_INBOUND =  MASK_CHANNEL_REGISTERED |
-            MASK_CHANNEL_UNREGISTERED | MASK_CHANNEL_ACTIVE | MASK_CHANNEL_INACTIVE | MASK_CHANNEL_READ |
-            MASK_CHANNEL_READ_COMPLETE | MASK_USER_EVENT_TRIGGERED | MASK_CHANNEL_WRITABILITY_CHANGED;
-}
-```
-
-例如，在本小节中我们讨论的是 `write` 事件的传播，因此需要首先在当前 `ChannelHandler` 前找到一个类型为 `ChannelOutboundHandler` 的 `ChannelHandler`。  
-
-`ctx.executionMask & (onlyMask | mask) == 0` 用于判断前一个 `ChannelHandler` 是否为指定的类型。在本小节中，我们指定的 `onlyMask` 为 `MASK_ONLY_OUTBOUND`，即 `ChannelOutboundHandler` 类型。如果前一个节点不是该类型，程序将直接跳过，继续在 `pipeline` 中向前查找。  
-
-- `int mask`： 用于指定前一个 `ChannelHandler` 需要实现的相关异步事件处理回调。在本小节中，指定的是 `MASK_WRITE`，即需要实现 `write` 回调方法。通过 `(ctx.executionMask & mask) == 0` 条件来判断前一个 `ChannelHandler` 是否实现了 `write` 回调。如果没有实现，程序将跳过该节点，继续在 `pipeline` 中向前查找。  
-
-关于 skipContext 方法的详细介绍，笔者还会在下篇文章全面介绍 pipeline的时候再次进行介绍，这里大家只需要明白该方法的核心逻辑即可。
-
-#### 3.1.4、向前传播 write 事件
+ 在这里，我们需要使用 `findContextOutbound` 方法，在当前 `ChannelHandler` 前的链路中查找一个类型为 `ChannelOutboundHandler` 的处理器，并确保其覆盖实现了 `write` 回调方法。找到后，该 `ChannelHandler` 将作为下一个执行目标。   
 
 通过 `findContextOutbound` 方法，我们在 `pipeline` 中找到了下一个具有执行资格的 `ChannelHandler`，即下一个类型为 `ChannelOutboundHandler` 且覆盖实现了 `write` 方法的 `ChannelHandler`。接下来，Netty 会调用这个 `nextChannelHandler` 的 `write` 方法，以实现 `write` 事件在 `pipeline` 中的传播。  
 
@@ -371,17 +172,17 @@ private void write(Object msg, boolean flush, ChannelPromise promise) {
 }
 ```
 
- 在向 `pipeline` 添加 `ChannelHandler` 时，可以通过 `ChannelPipeline#addLast(EventExecutorGroup, ChannelHandler...)` 方法指定执行该 `ChannelHandler` 的 `executor`。如果未特别指定，执行该 `ChannelHandler` 的 `executor` 默认为与该 `Channel` 绑定的 Reactor 线程。  
+在向 `pipeline` 添加 `ChannelHandler` 时，可以通过 `ChannelPipeline#addLast(EventExecutorGroup, ChannelHandler...)` 方法指定执行该 `ChannelHandler` 的 `executor`。如果未特别指定，执行该 `ChannelHandler` 的 `executor` 默认为与该 `Channel` 绑定的 Reactor 线程。
 
-执行 ChannelHandler 中异步事件回调方法的线程必须是 ChannelHandler 指定的executor
+执行 `ChannelHandler` 中异步事件回调方法的线程必须是 `ChannelHandler` 指定的 `executor`。
 
-所以这里首先我们需要获取在 findContextOutbound 方法查找出来的下一个符合执行条件的 ChannelHandler 指定的executor。
+因此，首先我们需要获取在 `findContextOutbound` 方法查找出来的下一个符合执行条件的 `ChannelHandler` 指定的 `executor`。
 
 ```java
 EventExecutor executor = next.executor()
 ```
 
-并 通过 `executor.inEventLoop()` 方法判断当前线程是否是该 `ChannelHandler` 指定的 `executor`。如果是，则直接在当前线程中执行 `ChannelHandler` 中的 `write` 方法。如果不是，则需要将 `ChannelHandler` 对 `write` 事件的回调操作封装成异步任务 `WriteTask`，并将其提交给指定的 `executor`，由该 `executor` 负责执行。  
+并通过 `executor.inEventLoop()` 方法判断当前线程是否是该 `ChannelHandler` 指定的 `executor`。如果是，则直接在当前线程中执行 `ChannelHandler` 中的 `write` 方法。如果不是，则需要将 `ChannelHandler` 对 `write` 事件的回调操作封装成异步任务 `WriteTask`，并将其提交给指定的 `executor`，由该 `executor` 负责执行。
 
 需要注意的是，这个 `executor` 并不一定是与 `channel` 绑定的 Reactor 线程。它可以是我们自定义的线程池，但必须通过 `ChannelPipeline#addLast` 方法进行指定。如果不进行指定，默认情况下，执行 `ChannelHandler` 的 `executor` 才是与 `channel` 绑定的 Reactor 线程。
 
@@ -389,29 +190,19 @@ EventExecutor executor = next.executor()
 
 **这里有些同学可能会有疑问，如果我们向pipieline添加ChannelHandler的时候，为每个ChannelHandler指定不同的executor时，Netty如果确保线程安全呢**？？
 
-
-
 大家还记得pipeline中的结构吗？
 
-![image-20241031174210480](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410311742560.png)
-
-
+<img src="https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410311742560.png?x-oss-process=image/watermark,image_aW1nL3dhdGVyLnBuZw==,g_nw,x_1,y_1" alt="image-20241031174210480" style="zoom:50%;" />
 
 `outbound` 事件在 `pipeline` 中的传播最终会到达 `HeadContext`。在之前的系列文章中，我们提到过，`HeadContext` 封装了 `Channel` 的 `Unsafe` 类，负责 `Channel` 底层的 IO 操作。值得注意的是，`HeadContext` 指定的 `executor` 正是与 `channel` 绑定的 Reactor 线程。  
 
+![image-20241101141309452](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202411011413564.png)
 
+以最终在 Netty 内核中执行写操作的线程一定是 Reactor 线程，从而保证了线程安全性。
 
-![img](https://cdn.nlark.com/yuque/0/2024/png/35210587/1729692910678-047cdfa8-8b1c-45fa-8838-d17b9769d53f.png)
+忘记这段内容的同学可以回顾一下 [《BootStrap 初始化》](/netty_source_code_parsing/main_task/boot_layer/bootstrap_init)。类似的套路我们在介绍 `NioServerSocketChannel` 进行 `bind` 绑定以及 `register` 注册时也提到过，只不过这里将 `executor` 扩展到了自定义线程池的范围。
 
-
-
-所以最终在 netty 内核中执行写操作的线程一定是 reactor 线程从而保证了线程安全性。
-
-忘记这段内容的同学可以在回顾下[BootStrap 初始化](/netty_source_code_parsing/main_task/boot_layer/bootstrap_init)，类似的套路我们在介绍 NioServerSocketChannel 进行 bind 绑定以及 register 注册的时候都介绍过，只不过这里将 executor 扩展到了自定义线程池的范围。
-
-#### 3.1.5、触发 nextChannelHandler 的 write 方法回调
-
-![image-20241031174347213](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410311743334.png)
+![image-20241031174347213](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410311743334.png?x-oss-process=image/watermark,image_aW1nL3dhdGVyLnBuZw==,g_nw,x_1,y_1)
 
 ```java
 //如果当前线程是指定的 executor 则直接操作
@@ -422,7 +213,7 @@ if (flush) {
 }
 ```
 
-由于我们在示例 ChannelHandler 中调用的是 ChannelHandlerContext#write 方法，所以这里的 flush = false 。触发调用 nextChannelHandler 的 write 方法。
+由于我们在示例 `ChannelHandler` 中调用的是 `ChannelHandlerContext#write` 方法，所以这里的 `flush` 为 `false`。这将触发调用下一个 `ChannelHandler` 的 `write` 方法。
 
 ```java
 void invokeWrite(Object msg, ChannelPromise promise) {
@@ -436,9 +227,9 @@ void invokeWrite(Object msg, ChannelPromise promise) {
 }
 ```
 
- 首先，需要通过 `invokeHandler()` 方法判断 `nextChannelHandler` 中的 `handlerAdded` 方法是否已经被回调。只有当 `ChannelHandler` 被正确添加到对应的 `ChannelHandlerContext` 中，并且准备好处理异步事件时，`ChannelHandler#handlerAdded` 方法才会被回调。  
+首先，需要通过 `invokeHandler()` 方法判断 `nextChannelHandler` 中的 `handlerAdded` 方法是否已经被回调。只有当 `ChannelHandler` 被正确添加到对应的 `ChannelHandlerContext` 中，并且准备好处理异步事件时，`ChannelHandler#handlerAdded` 方法才会被回调。
 
-这一部分内容笔者会在下一篇文章中详细为大家介绍，这里大家只需要了解调用 invokeHandler() 方法的目的就是为了确定 ChannelHandler 是否被正确的初始化。
+这一部分内容笔者会在下一篇文章中详细为大家介绍，这里大家只需要了解调用 `invokeHandler()` 方法的目的就是为了确定 `ChannelHandler` 是否被正确初始化。
 
 ```java
 private boolean invokeHandler() {
@@ -448,7 +239,7 @@ private boolean invokeHandler() {
 }
 ```
 
- 只有在触发 `handlerAdded` 回调后，`ChannelHandler` 的状态才能变为 `ADD_COMPLETE`。如果 `invokeHandler()` 方法返回 `false`，则需要跳过这个 `nextChannelHandler`，并调用 `ChannelHandlerContext#write` 方法继续向前传播 `write` 事件。  
+只有在触发 `handlerAdded` 回调后，`ChannelHandler` 的状态才能变为 `ADD_COMPLETE`。如果 `invokeHandler()` 方法返回 `false`，则需要跳过这个 `nextChannelHandler`，并调用 `ChannelHandlerContext#write` 方法继续向前传播 `write` 事件。  
 
 ```java
 @Override
@@ -472,13 +263,13 @@ private void invokeWrite0(Object msg, ChannelPromise promise) {
 }
 ```
 
-这里我们看到在 write 事件的传播过程中如果发生异常，那么 write 事件就会停止在 pipeline 中传播，并通知注册的 ChannelFutureListener。
+在 `write` 事件的传播过程中，如果发生异常，则 `write` 事件会停止在 `pipeline` 中传播，并通知注册的 `ChannelFutureListener`。
 
-![image-20241031174210480](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410311742560.png)
+<img src="https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410311742560.png?x-oss-process=image/watermark,image_aW1nL3dhdGVyLnBuZw==,g_nw,x_1,y_1" alt="image-20241031174210480" style="zoom:50%;" />
 
  从本文示例的 `pipeline` 结构中可以看出，当在 `EchoServerHandler` 中调用 `ChannelHandlerContext#write` 方法后，`write` 事件会在 `pipeline` 中向前传播至 `HeadContext`。在 `HeadContext` 中，Netty 才会真正处理 `write` 事件。  
 
-### 3.2、HeadContext
+### HeadContext
 
 ```java
 final class HeadContext extends AbstractChannelHandlerContext
@@ -493,7 +284,7 @@ final class HeadContext extends AbstractChannelHandlerContext
 
 `write` 事件最终会在 `pipeline` 中传播到 `HeadContext`，并回调 `HeadContext` 的 `write` 方法。在这个回调中，会调用 `channel` 的 `Unsafe` 类以执行底层的 `write` 操作。这正是 `write` 事件在 `pipeline` 中传播的终点。  
 
-![image-20241031180100928](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410311801283.png)
+<img src="https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410311801283.png?x-oss-process=image/watermark,image_aW1nL3dhdGVyLnBuZw==,g_nw,x_1,y_1" alt="image-20241031180100928" style="zoom: 33%;" />
 
 ```java
 protected abstract class AbstractUnsafe implements Unsafe {
@@ -527,11 +318,11 @@ protected abstract class AbstractUnsafe implements Unsafe {
 }
 ```
 
- 众所周知，Netty 是一个异步事件驱动的网络框架。在 Netty 中，所有的 IO 操作都是异步的，包括本小节介绍的 `write` 操作。为了确保 `write` 操作的异步执行，Netty 定义了一个待发送数据的缓冲队列 `ChannelOutboundBuffer`。在将用户需要发送的网络数据写入 Socket 之前，这些数据会先被缓存到 `ChannelOutboundBuffer` 中。  
+众所周知，Netty 是一个异步事件驱动的网络框架。在 Netty 中，所有的 IO 操作都是异步的，包括本小节介绍的 `write` 操作。为了确保 `write` 操作的异步执行，Netty 定义了一个待发送数据的缓冲队列 **`ChannelOutboundBuffer`**。在将用户需要发送的网络数据写入 Socket 之前，这些数据会先被缓存到 **`ChannelOutboundBuffer`** 中。
 
-每个客户端 NioSocketChannel 对应一个 ChannelOutboundBuffer 待发送数据缓冲队列
+每个客户端 `NioSocketChannel` 对应一个 `ChannelOutboundBuffer` 待发送数据缓冲队列。
 
-#### 3.2.1、filterOutboundMessage
+#### filterOutboundMessage
 
 `ChannelOutboundBuffer` 仅接受 `ByteBuffer` 类型和 `FileRegion` 类型的消息数据。  
 
@@ -540,29 +331,34 @@ FileRegion 是Netty定义的用来通过零拷贝的方式网络传输文件数�
  因此，在将消息 (`msg`) 写入 `ChannelOutboundBuffer` 之前，我们需要检查待写入消息的类型，以确保它是 `ChannelOutboundBuffer` 可接受的类型。  
 
 ```java
-@Override
-protected final Object filterOutboundMessage(Object msg) {
-    if (msg instanceof ByteBuf) {
-        ByteBuf buf = (ByteBuf) msg;
-        if (buf.isDirect()) {
+public abstract class AbstractNioByteChannel extends AbstractNioChannel{
+    。。。
+   	@Override
+    protected final Object filterOutboundMessage(Object msg) {
+        if (msg instanceof ByteBuf) {
+            ByteBuf buf = (ByteBuf) msg;
+            if (buf.isDirect()) {
+                return msg;
+            }
+
+            return newDirectBuffer(buf);
+        }
+
+        if (msg instanceof FileRegion) {
             return msg;
         }
 
-        return newDirectBuffer(buf);
+        throw new UnsupportedOperationException(
+                "unsupported message type: " + StringUtil.simpleClassName(msg) + EXPECTED_TYPES);
     }
-
-    if (msg instanceof FileRegion) {
-        return msg;
-    }
-
-    throw new UnsupportedOperationException(
-            "unsupported message type: " + StringUtil.simpleClassName(msg) + EXPECTED_TYPES);
+    。。。
 }
+
 ```
 
- 在网络数据传输过程中，Netty 为了减少数据从堆内存到堆外内存的拷贝，并缓解 GC 的压力，采用了 `DirectByteBuffer`，使用堆外内存来存放网络发送的数据。  
+在网络数据传输过程中，Netty 为了减少数据从堆内存到堆外内存的拷贝，并缓解 GC 的压力，采用了 `DirectByteBuffer`，使用堆外内存来存放网络发送的数据。  
 
-#### 3.2.2、estimatorHandle计算当前msg的大小
+#### estimatorHandle 计算当前 msg 的大小
 
 ```java
 public class DefaultChannelPipeline implements ChannelPipeline {
@@ -619,7 +415,7 @@ public final class DefaultMessageSizeEstimator implements MessageSizeEstimator {
 
 `write` 事件处理的最终逻辑是将待发送数据写入到 `ChannelOutboundBuffer` 中。接下来，我们将探讨 `ChannelOutboundBuffer` 的内部结构。
 
-### 3.3、ChannelOutboundBuffer
+### ChannelOutboundBuffer
 
 `ChannelOutboundBuffer` 实际上是一个单链表结构的缓冲队列，链表中的节点类型为 `Entry`。由于 `ChannelOutboundBuffer` 在 Netty 中的作用是缓存应用程序待发送的网络数据，因此 `Entry` 中封装的是待写入 Socket 的网络发送数据相关的信息，以及在 `ChannelHandlerContext#write` 方法中返回给用户的 `ChannelPromise`，以便在数据写入 Socket 后异步通知应用程序。
 
@@ -633,7 +429,7 @@ public final class DefaultMessageSizeEstimator implements MessageSizeEstimator {
 
 ![image-20241031181419963](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410311814063.png)
 
-#### 3.3.1、Entry
+#### Entry
 
 `Entry` 作为 `ChannelOutboundBuffer` 链表结构中的节点元素，封装了待发送数据的各种信息。`ChannelOutboundBuffer` 实际上是对 `Entry` 结构的组织和操作。因此，理解 `Entry` 结构是理解整个 `ChannelOutboundBuffer` 运作流程的基础。
 
@@ -688,13 +484,13 @@ static final class Entry {
 - `long total`：Entry中总共需要发送多少数据。注意：这个字段并不包含 Entry 对象的内存占用大小。只是表示待发送网络数据的大小。
 - `boolean cancelled`：应用程序调用的 write 操作是否被取消。
 - `int pendingSize`：表示待发送数据的内存占用总量。待发送数据在内存中的占用量分为两部分：
-
-- - Entry对象中所封装的待发送网络数据大小。
+  - Entry对象中所封装的待发送网络数据大小。
   - Entry对象本身在内存中的占用量。
+
 
 ![image-20241031181427134](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410311814323.png)
 
-#### 3.3.2、pendingSize 的作用
+#### pendingSize 的作用
 
 设想这样一个场景：  由于网络拥塞或 Netty 客户端负载过高，导致网络数据的接收和处理速度逐渐减慢。TCP 的滑动窗口不断缩小，最终可能降至 0。这时，Netty 服务端却仍然在频繁地执行写操作，不断地将数据写入 `ChannelOutboundBuffer` 中。  
 
@@ -707,7 +503,7 @@ static final class Entry {
 
 
 
-**那么，Netty 是如何记录** `**ChannelOutboundBuffer**` **中待发送数据的内存占用总量的呢？**
+**那么，Netty 是如何记录** `ChannelOutboundBuffer` **中待发送数据的内存占用总量的呢？**
 
 答案就是本小节要介绍的 pendingSize 字段。
 
@@ -725,7 +521,7 @@ public final class ChannelOutboundBuffer {
 }
 ```
 
-#### 3.3.3、高低水位线
+#### 高低水位线
 
 上小节提到 Netty 为了防止 ChannelOutboundBuffer 中的待发送数据内存占用无限制的增长从而导致 OOM ，所以引入了高低水位线，作为待发送数据内存占用的上限和下限。
 
@@ -765,12 +561,12 @@ public final class WriteBufferWaterMark {
 
 这种设计有效地管理了待发送数据的内存使用，确保在网络拥塞或负载过高的情况下，不会导致内存溢出（OOM）问题的发生。  
 
-#### 3.3.4、Entry实例对象在 JVM 中占用内存大小
+#### Entry实例对象在 JVM 中占用内存大小
 
 `pendingSize` 主要用于记录当前待发送数据的内存占用总量，以预警 OOM（Out of Memory）问题的发生。待发送数据的内存占用由以下两部分组成：  
 
-- **待发送数据** `**msg**` **的内存占用大小**
-- `**Entry**` **对象本身在 JVM 中的内存占用**
+- **待发送数据** `msg` **的内存占用大小**
+- `Entry` **对象本身在 JVM 中的内存占用**
 
 如何计算 `Entry` 对象的内存占用？  
 
@@ -865,7 +661,7 @@ Entry 对象的内存布局中开头先是 8 个字节的 MarkWord，然后是 4
 
 **综合字段重排列的三个规则最终计算出来在关闭压缩指针的情况下Entry对象在堆中占用内存大小为96字节**
 
-#### 3.3.5、向 ChannelOutboundBuffer 中缓存待发送数据
+#### 向 ChannelOutboundBuffer 中缓存待发送数据
 
 在介绍完 `ChannelOutboundBuffer` 的基本结构之后，下面就来到了 Netty 处理 `write` 事件的最后一步，我们来看下用户的待发送数据是如何被添加进 `ChannelOutboundBuffer` 中的。
 
@@ -887,7 +683,7 @@ public void addMessage(Object msg, int size, ChannelPromise promise) {
 }
 ```
 
-##### 3.3.5.1、创建Entry对象来封装待发送数据信息
+##### 创建Entry对象来封装待发送数据信息
 
 通过前面的介绍，我们了解到，当用户调用 `ctx.write(msg)` 之后，**write** 事件开始在 **pipeline** 中从当前 **ChannelHandler** 向前传播，最终在 **HeadContext** 中将待发送数据写入到对应的写缓冲区 **ChannelOutboundBuffer** 中。
 
@@ -944,7 +740,7 @@ static final class Entry {
 
 字段 `CHANNEL_OUTBOUND_BUFFER_ENTRY_OVERHEAD ` 表示的就是 Entry 对象在内存中的占用大小，Netty这里默认是 96 字节，当然如果我们的应用程序开启了指针压缩，我们可以通过 JVM 启动参数 `-D io.netty.transport.outboundBufferEntrySizeOverhead` 指定为 64 字节。
 
-##### 3.3.5.2、将Entry对象添加进 ChannelOutboundBuffer 中
+##### 将Entry对象添加进 ChannelOutboundBuffer 中
 
 ```java
 if (tailEntry == null) {
@@ -966,7 +762,7 @@ if (unflushedEntry == null) {
 
 通过 unflushedEntry 和 tailEntry 可以定位出待发送数据的范围。Channel 中的每一次 write 事件，最终都会将待发送数据插入到 ChannelOutboundBuffer 的尾结点处。
 
-##### 3.3.5.3、incrementPendingOutboundBytes
+##### incrementPendingOutboundBytes
 
 在将 Entry 对象添加进 ChannelOutboundBuffer 之后，就需要更新用于记录当前 ChannelOutboundBuffer 中关于待发送数据所占内存总量的水位线指示。
 
@@ -1078,7 +874,7 @@ public class EchoServerHandler extends ChannelInboundHandlerAdapter {
 
 到这里 write 事件在 pipeline 中的传播，笔者就为大家介绍完了，下面我们来看下另一个重要的 flush 事件的处理过程。
 
-## 4、flush
+## flush
 
 从前面对 Netty 处理 **write** 事件的分析中，我们可以看到，当用户调用 `ctx.write(msg)` 方法时，Netty 只是将用户要发送的数据临时写入到对应的待发送缓冲队列 **ChannelOutboundBuffer** 中，并不会立即将数据写入 Socket。
 
@@ -1096,7 +892,7 @@ public class EchoServerHandler extends ChannelInboundHandlerAdapter {
 }
 ```
 
-### 4.1、flush 事件的传播
+### flush 事件的传播
 
 **Flush 事件** 和 **Write 事件** 一样，都是 outbound 事件，因此它们在 **pipeline** 中的传播方向都是从后往前。
 
@@ -1136,7 +932,7 @@ abstract class AbstractChannelHandlerContext implements ChannelHandlerContext, R
 
 如果当前线程不是 **ChannelHandler** 指定的 **executor**，则需要将 `invokeFlush()` 方法的调用封装成 **Task**，并交给指定的 **executor** 执行。
 
-#### 4.1.1、触发nextChannelHandler的flush方法回调
+#### 触发nextChannelHandler的flush方法回调
 
 ```java
 private void invokeFlush() {
@@ -1186,9 +982,9 @@ private void invokeExceptionCaught(final Throwable cause) {
 
 而其他 outbound 类事件，比如 **write** 事件，在传播过程中发生异常时，只会回调通知相关的 **ChannelFuture**，并不会触发 **exceptionCaught** 事件的传播
 
-### 4.2、flush事件的处理
+### flush事件的处理
 
-![image-20241031174210480](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410311742560.png)
+<img src="https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410311742560.png?x-oss-process=image/watermark,image_aW1nL3dhdGVyLnBuZw==,g_nw,x_1,y_1" alt="image-20241031174210480" style="zoom:50%;" />
 
 最终 flush 事件会在 pipeline 中一直向前传播至 HeadContext 中，并在 HeadContext 里调用 channel 的 unsafe 类完成 flush 事件的最终处理逻辑。
 
@@ -1228,7 +1024,7 @@ protected abstract class AbstractUnsafe implements Unsafe {
 }
 ```
 
-#### 4.2.1、ChannelOutboundBuffer#addFlush
+#### ChannelOutboundBuffer#addFlush
 
 ![img](https://cdn.nlark.com/yuque/0/2024/png/35210587/1729695440431-57d102c6-5892-4c37-9d27-a47f5d8b6ade.png)
 
@@ -1355,7 +1151,7 @@ private void setWritable(boolean invokeLater) {
 
 ![img](https://cdn.nlark.com/yuque/0/2024/png/35210587/1729695665205-c95b2eda-45e3-47a3-8386-564ee1239e08.png)
 
-#### 4.2.2、发送数据前的最后检查 --- flush0
+#### 发送数据前的最后检查 --- flush0
 
 flush0 方法这里主要做的事情就是检查当 channel 的状态是否正常，如果 channel 状态一切正常，则调用 doWrite 方法发送数据
 
@@ -1413,7 +1209,7 @@ protected abstract class AbstractUnsafe implements Unsafe {
 - `outboundBuffer == null || outboundBuffer.isEmpty() ` ：如果 channel 已经关闭了或者对应写缓冲区中没有任何数据，那么就停止发送流程，直接 return。
 - `!isActive()` ：如果当前channel处于非活跃状态，则需要调用 `outboundBuffer#failFlushed` 通知 ChannelOutboundBuffer 中所有待发送操作对应的 channelPromise 向用户线程报告发送失败。并将待发送数据 Entry 对象从 ChannelOutboundBuffer 中删除，并释放待发送数据空间，回收 Entry 对象实例。
 
-还记得我们在[?《Netty如何高效接收网络连接》](https://mp.weixin.qq.com/s?__biz=Mzg2MzU3Mjc3Ng==&mid=2247484184&idx=1&sn=726877ce28cf6e5d2ac3225fae687f19&chksm=ce77c55ff9004c493b592288819dc4d4664b5949ee97fed977b6558bc517dad0e1f73fab0f46&scene=21#wechat_redirect)一文中提到过的 NioSocketChannel 的 active 状态有哪些条件吗？？
+还记得我们在[《处理 OP_ACCEPT 事件》](/netty_source_code_parsing/main_task/event_scheduling_layer/io/OP_ACCEPT)一文中提到过的 NioSocketChannel 的 active 状态有哪些条件吗？？
 
 ```java
 @Override
@@ -1432,7 +1228,7 @@ NioSocketChannel 处于 active 状态的条件必须是当前 NioSocketChannel �
 - `!isActive() && !isOpen()` ：说明当前 channel 处于关闭状态，这时通知给用户 channelPromise 的异常类型为 newClosedChannelException ，因为 channel 已经关闭，所以这里并不会触发 channelWritabilityChanged 事件。
 - 当 channel 的这些异常状态校验通过之后，则调用 doWrite 方法将 ChannelOutboundBuffer 中的待发送数据写进底层 Socket 中。
 
-##### 4.2.2.1、ChannelOutboundBuffer#failFlushed
+##### ChannelOutboundBuffer#failFlushed
 
 ```java
 public final class ChannelOutboundBuffer {
@@ -1460,7 +1256,7 @@ public final class ChannelOutboundBuffer {
 
 该方法用于在 Netty 在发送数据的时候，如果发现当前 channel 处于非活跃状态，则将 ChannelOutboundBuffer 中 flushedEntry 与tailEntry 之间的 Entry 对象节点全部删除，并释放发送数据占用的内存空间，同时回收 Entry 对象实例。
 
-##### 4.2.2.2、ChannelOutboundBuffer#remove0
+##### ChannelOutboundBuffer#remove0
 
 ```java
 private boolean remove0(Throwable cause, boolean notifyWritability) {
@@ -1497,15 +1293,15 @@ private boolean remove0(Throwable cause, boolean notifyWritability) {
 
 一个 Entry 节点需要从 ChannelOutboundBuffer 中清除时，Netty 需要释放该 Entry 节点中包裹的发送数据 msg 所占用的内存空间。并标记对应的 promise 为失败同时通知对应的 listener ，由于 msg 得到释放，所以需要降低 channelOutboundBuffer 中的内存占用水位线，并根据 `boolean notifyWritability` 决定是否触发 ChannelWritabilityChanged 事件。最后需要将该 Entry 实例回收至 Recycler 对象池中。
 
-## 5、终于开始真正地发送数据了！
+## 将数据写入 IO
 
-我们现在进入了 Netty 发送数据的核心处理逻辑。在《Netty 如何高效接收网络数据》一文中，笔者详细介绍了 Netty 读取数据的核心流程。Netty 会在一个 **read loop** 中不断循环读取 Socket 中的数据，直到数据读取完毕或读取次数已满 16 次。当循环读取了 16 次仍未读取完毕时，Netty 将停止继续读取，因为它需要保证 **Reactor** 线程能够均匀地处理注册在其上的所有 **Channel** 的 IO 事件。剩余未读取的数据将等待下一次 **read loop** 开始读取。
+我们现在进入了 Netty 发送数据的核心处理逻辑。在[《处理 OP_READ 事件》](/netty_source_code_parsing/main_task/event_scheduling_layer/io/OP_READ)一文中，笔者详细介绍了 Netty 读取数据的核心流程。Netty 会在一个 `read loop` 中不断循环读取 Socket 中的数据，直到数据读取完毕或读取次数已满 `16 次`。当循环读取了 `16 次` 仍未读取完毕时，Netty 将停止继续读取，因为它需要保证 `Reactor` 线程能够均匀地处理注册在其上的所有 `Channel` 的 IO 事件。剩余未读取的数据将等待下一次 `read loop` 开始读取。
 
-此外，在每次 **read loop** 开始之前，Netty 会分配一个初始化大小为 2048 的 **DirectByteBuffer** 来装载从 Socket 中读取的数据。当整个 **read loop** 结束时，会根据本次读取数据的总量来判断是否需要对该 **DirectByteBuffer** 进行扩容或缩容，目的是为下一次 **read loop** 分配一个容量合适的 **DirectByteBuffer**。
+此外，在每次 `read loop` 开始之前，Netty 会分配一个初始化大小为 `2048` 的 `DirectByteBuffer` 来装载从 Socket 中读取的数据。当整个 `read loop` 结束时，会根据本次读取数据的总量来判断是否需要对该 `DirectByteBuffer` 进行扩容或缩容，目的是为下一次 `read loop` 分配一个容量合适的 `DirectByteBuffer`。
 
 实际上，Netty 对发送数据的处理与对读取数据的处理的核心逻辑是相似的，大家可以结合这两篇文章进行对比。但发送数据的细节较多且复杂一些。由于这部分逻辑整体稍微复杂，我们接下来将分模块进行解析：
 
-### 5.1、发送数据前的准备工作
+### 发送数据前的准备工作
 
 ```java
 @Override
@@ -1539,7 +1335,7 @@ protected void doWrite(ChannelOutboundBuffer in) throws Exception {
 
 这部分内容为 Netty 开始发送数据之前的准备工作：
 
-#### 5.1.1 获取 write loop 最大发送循环次数
+1. **获取 write loop 最大发送循环次数**
 
 从当前 NioSocketChannel 的配置类 NioSocketChannelConfig 中获取 write loop 最大循环写入次数，默认为 16。但也可以通过下面的方式进行自定义设置。
 
@@ -1550,13 +1346,13 @@ ServerBootstrap b = new ServerBootstrap();
      .childOption(ChannelOption.WRITE_SPIN_COUNT,自定义数值)
 ```
 
-#### 5.1.2 处理在一轮 write loop 中就发送完数据的情况
+2. **处理在一轮 write loop 中就发送完数据的情况**
 
 进入 write loop 之后首先需要判断当前 ChannelOutboundBuffer 中的数据是否已经写完了 `in.isEmpty())` ，如果全部写完就需要清除当前 Channel 在 Reactor 上注册的 OP_WRITE 事件。
 
 这里大家可能会有疑问，目前我们还没有注册 OP_WRITE 事件到 Reactor 上，为啥要清除呢？别着急，笔者会在后面为大家揭晓答案。
 
-#### 5.1.3 获取本次 write loop 最大允许发送字节数
+3. **获取本次 write loop 最大允许发送字节数**
 
 从 ChannelConfig 中获取本次 write loop 最大允许发送的字节数 maxBytesPerGatheringWrite 。初始值为 `SO_SNDBUF大小 * 2 = 293976 = 146988 << 1`，最小值为 2048。
 
@@ -1591,7 +1387,7 @@ ServerBootstrap b = new ServerBootstrap();
      .childOption(ChannelOption.SO_SNDBUF,自定义数值)
 ```
 
-#### 5.1.4、将待发送数据转换成 JDK NIO ByteBuffer
+4. **将待发送数据转换成 JDK NIO ByteBuffer**
 
 由于最终 Netty 会调用 JDK NIO 的 **SocketChannel** 来发送数据，因此需要首先将当前 **Channel** 中的写缓冲队列 **ChannelOutboundBuffer** 里存储的 **DirectByteBuffer**（Netty 中的 **ByteBuffer** 实现）转换为 JDK NIO 的 **ByteBuffer** 类型。最终，转换后的待发送数据将存储在 **ByteBuffer[] nioBuffers** 数组中。这一转换通过调用 `ChannelOutboundBuffer#nioBuffers` 方法完成。
 
@@ -1604,7 +1400,7 @@ ServerBootstrap b = new ServerBootstrap();
 
 当做完这些发送前的准备工作之后，接下来 Netty 就开始向 JDK NIO SocketChannel 发送这些已经转换好的 JDK NIO ByteBuffer 了。
 
-### 5.2、向 JDK NIO SocketChannel 发送数据
+### 向 JDK NIO SocketChannel 发送数据
 
 ![image-20241031181631089](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410311816248.png)
 
@@ -1640,13 +1436,13 @@ protected void doWrite(ChannelOutboundBuffer in) throws Exception {
 }
 ```
 
-大家可能会对 `nioBufferCnt == 0` 的情况感到疑惑。明明之前已经校验过 **ChannelOutboundBuffer** 不为空，为什么这里从 **ChannelOutboundBuffer** 中获取到的 **nioBuffer** 个数依然为 0 呢？
+大家可能会对 `nioBufferCnt == 0` 的情况感到疑惑。明明之前已经校验过 `ChannelOutboundBuffer` 不为空，为什么这里从 `ChannelOutboundBuffer` 中获取到的 `nioBuffer` 个数依然为 0 呢？
 
-在之前介绍 Netty 对 **write** 事件的处理过程中提到，**ChannelOutboundBuffer** 只支持 **ByteBuf** 类型和 **FileRegion** 类型。其中，**ByteBuf** 类型用于装载普通的发送数据，而 **FileRegion** 类型则用于通过零拷贝的方式进行网络传输文件。
+在之前介绍 Netty 对 `write` 事件的处理过程中提到，`ChannelOutboundBuffer` 只支持 `ByteBuf` 类型和 `FileRegion` 类型。其中，`ByteBuf` 类型用于装载普通的发送数据，而 `FileRegion` 类型则用于通过零拷贝的方式进行网络传输文件。
 
-虽然此时 **ChannelOutboundBuffer** 不为空，但装载的 **NioByteBuffer** 个数为 0，这表明 **ChannelOutboundBuffer** 中装载的是 **FileRegion** 类型，当前正在进行网络文件传输。`case 0` 的分支主要用于处理网络文件传输的情况。
+虽然此时 `ChannelOutboundBuffer` 不为空，但装载的 `NioByteBuffer` 个数为 0，这表明 `ChannelOutboundBuffer` 中装载的是 `FileRegion` 类型，当前正在进行网络文件传输。`case 0` 的分支主要用于处理网络文件传输的情况。
 
-#### 5.2.1、零拷贝发送网络文件
+#### 零拷贝发送网络文件
 
 ```java
 protected final int doWrite0(ChannelOutboundBuffer in) throws Exception {
@@ -1722,15 +1518,15 @@ case 0:
 - `localFlushedAmount > 0` ：表示本 write loop 中写入了一些数据到 Socket 中，会有返回 1，writeSpinCount - 1 减少一次 write loop 次数。
 - `localFlushedAmount <= 0` ：表示当前 Socket 发送缓冲区已满，无法写入数据，那么就返回 `WRITE_STATUS_SNDBUF_FULL = Integer.MAX_VALUE`。`writeSpinCount - Integer.MAX_VALUE` 必然是负数，直接退出循环，向 Reactor 注册 OP_WRITE 事件并退出 flush 流程。等 Socket 发送缓冲区可写了，Reactor 会通知 channel 继续发送文件数据。**记住这里，我们后面还会提到**。
 
-#### 5.2.2、发送普通数据
+#### 发送普通数据
 
 在处理 ByteBuffer 装载的普通数据发送逻辑时，剩下的两个 case：`case 1` 和 `default` 分支主要负责不同的情况。
 
-\1. `case 1`
+1. `case 1`
 
 此分支表示当前 `Channel` 的 `ChannelOutboundBuffer` 中仅包含一个 `NioByteBuffer` 的情况。
 
-\2. `default`
+2. `default`
 
 此分支表示当前 `Channel` 的 `ChannelOutboundBuffer` 中包含多个 `NioByteBuffer` 的情况。
 
@@ -1794,8 +1590,8 @@ protected void doWrite(ChannelOutboundBuffer in) throws Exception {
 
 `case 1` 和 `default` 这两个分支在处理发送数据时的逻辑是相同的，唯一的区别在于：
 
-- `**case 1**`：处理单个 `NioByteBuffer` 的发送。
-- `**default**`：批量处理多个 `NioByteBuffer` 的发送。
+- `case 1`：处理单个 `NioByteBuffer` 的发送。
+- `default`：批量处理多个 `NioByteBuffer` 的发送。
 
 下面将以经常被触发的 `default` 分支为例，讲述 Netty 在处理数据发送时的逻辑细节：
 
@@ -1842,7 +1638,7 @@ protected final void setOpWrite() {
 
 关于通过位运算来向 IO 事件集合 interestOps 添加监听 IO 事件的用法，在前边的文章中，笔者已经多次介绍过了，这里不再重复。
 
-1. **调整下次写入字节数**
+4. **调整下次写入字节数**
    根据本次写循环向 Socket 写缓冲区写入数据的情况，调整下次写循环的最大写入字节数。`maxBytesPerGatheringWrite` 决定每次写循环可以从 `channelOutboundBuffer` 中最多获取多少发送数据。其初始值为 `SO_SNDBUF` 大小的两倍，即 `293976 = 146988 << 1`，最小值为 `2048`。  
 
 ```java
@@ -1859,43 +1655,45 @@ private void adjustMaxBytesPerGatheringWrite(int attempted, int written, int old
 }
 ```
 
-由于操作系统会动态调整 SO_SNDBUF 的大小，所以这里 netty 也需要根据操作系统的动态调整做出相应的调整，目的是尽量多的去写入数据。
+由于操作系统会动态调整 `SO_SNDBUF` 的大小，所以这里 Netty 也需要根据操作系统的动态调整做出相应的调整，目的是尽量多地写入数据。
 
- 当 `attempted == written` 时，表示本次写循环（write loop）尝试写入的数据已全部成功写入到 Socket 的写缓冲区中，这意味着下次写循环应该尝试写入更多的数据。  
+当 `attempted == written` 时，表示本次写循环 (`write loop`) 尝试写入的数据已全部成功写入到 Socket 的写缓冲区中，这意味着下次写循环应该尝试写入更多的数据。
 
- **如何确定“更多”数据的具体量？**  
+**如何确定 “更多” 数据的具体量？**
 
 - **扩大写入量**
   Netty 会将本次写入的数据量 `written` 扩大两倍。如果扩大后的写入量大于本次写循环的最大限制写入量 `maxBytesPerGatheringWrite`，这表明用户的写入需求非常高，Netty 将满足这一需求。因此，当前 `NioSocketChannelConfig` 中的 `maxBytesPerGatheringWrite` 将更新为本次写循环两倍的写入量。
 
-在下次写循环中，将尝试从 `ChannelOutboundBuffer` 中加载最多 `written * 2` 大小的字节数。
+  在下次写循环中，将尝试从 `ChannelOutboundBuffer` 中加载最多 `written * 2` 大小的字节数。
 
 - **维持现有写入量**
   如果扩大后的写入量仍然小于等于本次写循环的最大限制写入量 `maxBytesPerGatheringWrite`，则说明用户的写入需求尚不算强烈，Netty 将继续维持当前的 `maxBytesPerGatheringWrite` 数值不变。
+
 - **减少下次写入量**
-  如果本次写入的数据量不足尝试写入数据的 1/2，即 `written < attempted >>> 1`，则表明当前 Socket 写缓冲区的可写容量已接近上限。此时，下次写循环应减少写入量，将下次写入的数据量减小为 `attempted` 的 1/2。不过，减少的量不能无限制下降，最小值不得低于 `2048`。
+  如果本次写入的数据量不足尝试写入数据的 `1/2`，即 `written < attempted >>> 1`，则表明当前 Socket 写缓冲区的可写容量已接近上限。此时，下次写循环应减少写入量，将下次写入的数据量减小为 `attempted` 的 `1/2`。不过，减少的量不能无限制下降，最小值不得低于 `2048`。
 
-这里可以结合笔者的文章[ByteBuf](/memory_management/data_carrier/ByteBuf)中介绍到的 read loop 场景中的扩缩容一起对比着看。
+这里可以结合笔者的文章 [ByteBuf]() 中介绍到的 `read loop` 场景中的扩缩容一起对比着看。
 
-read loop 中的扩缩容触发时机是在一个完整的 read loop 结束时候触发。而 write loop 中扩缩容的触发时机是在每次 write loop 发送完数据后，立即触发扩缩容判断。
+`read loop` 中的扩缩容触发时机是在一个完整的 `read loop` 结束时触发。而 `write loop` 中扩缩容的触发时机是在每次 `write loop` 发送完数据后，立即触发扩缩容判断。
 
-1. **移除已发送数据**
-   当本次写循环批量发送完 `ChannelOutboundBuffer` 中的数据后，最后调用 `in.removeBytes(localWrittenBytes)` 从 `ChannelOutboundBuffer` 中移除所有已完成的写入条目。如果只发送了条目的部分数据，则更新条目对象中封装的 `DirectByteBuffer` 的 `readerIndex`，以便等待下一次写循环的写入。  
+5. **移除已发送数据**
+   当本次写循环批量发送完 `ChannelOutboundBuffer` 中的数据后，最后调用 `in.removeBytes(localWrittenBytes)` 从 `ChannelOutboundBuffer` 中移除所有已完成的写入条目。如果只发送了条目的部分数据，则更新条目对象中封装的 `DirectByteBuffer` 的 `readerIndex`，以便等待下一次写循环的写入。
 
 到这里，`write loop` 中的数据发送逻辑已介绍完毕。接下来，Netty 会在 `write loop` 中循环发送数据，直到满足以下条件之一：
 
-1. 写满 **16 次**。
-2. 数据发送完毕。
+* 写满 `16 次`。
 
-还有一种退出 `write loop` 的情况是，当 Socket 中的写缓冲区已满，无法继续写入数据。此时，Netty 将退出 `write loop` 并向 Reactor 注册 `OP_WRITE` 事件。  
+* 数据发送完毕。
+
+还有一种退出 `write loop` 的情况是，当 Socket 中的写缓冲区已满，无法继续写入数据。此时，Netty 将退出 `write loop` 并向 Reactor 注册 `OP_WRITE` 事件。
 
 **特殊情况处理**
 
-此外，存在一种特殊情况：如果 `write loop` 已经写满 **16 次** 但仍未写完所有数据，并且此时 Socket 的写缓冲区还没有满，Netty 会如何处理这种情况呢？
+此外，存在一种特殊情况：如果 `write loop` 已经写满 `16 次` 但仍未写完所有数据，并且此时 Socket 的写缓冲区还没有满，Netty 会如何处理这种情况呢？
 
 在这种情况下，Netty 会继续进行写入。具体而言，Netty 会根据当前写入的状态和缓冲区的容量动态调整写入策略，确保尽可能多地发送数据，而不会因为达到次数限制而停滞不前。
 
-## 6、处理 Socket 可写但已经写满 16 次还没写完的情况
+## 处理 Socket 可写但已经写满 16 次还没写完的情况
 
 ```java
 @Override
@@ -1927,9 +1725,9 @@ protected void doWrite(ChannelOutboundBuffer in) throws Exception {
 }
 ```
 
-当 write loop 结束后，这时 writeSpinCount 的值会有两种情况：
+当 `write loop` 结束后，`writeSpinCount` 的值会有两种情况：
 
-- `writeSpinCount < 0`：这种情况可能较难理解。在前面介绍 Netty 通过零拷贝方式传输网络文件时，我们详细讨论了 `doWrite0` 方法的几种返回值。当 Netty 在传输文件的过程中发现 Socket 缓冲区已满，无法继续写入数据时，会返回 `WRITE_STATUS_SNDBUF_FULL = Integer.MAX_VALUE`。因此，`writeSpinCount` 的值将小于 0。
+- **`writeSpinCount < 0`**：这种情况可能较难理解。在前面介绍 Netty 通过零拷贝方式传输网络文件时，我们详细讨论了 `doWrite0` 方法的几种返回值。当 Netty 在传输文件的过程中发现 Socket 缓冲区已满，无法继续写入数据时，会返回 `WRITE_STATUS_SNDBUF_FULL = Integer.MAX_VALUE`。因此，`writeSpinCount` 的值将小于 0。
 
 此时，`write loop` 将被中断，并跳转到 `incompleteWrite(writeSpinCount < 0)` 方法。在 `incompleteWrite` 方法中，Netty 会向 Reactor 注册 `OP_WRITE` 事件。当 Socket 缓冲区变得可写时，`epoll` 会通知 Reactor 线程继续发送文件。
 
@@ -1946,7 +1744,7 @@ protected final void incompleteWrite(boolean setOpWrite) {
 }
 ```
 
-- `writeSpinCount == 0`：这种情况比较简单易懂。这表示已经写满了 **16 次**，但仍未写完，同时 Socket 的写缓冲区未满，依然可以继续写入。
+- **`writeSpinCount == 0`**：这种情况比较简单易懂。这表示已经写满了 `16 次`，但仍未写完，同时 Socket 的写缓冲区未满，依然可以继续写入。
 
 尽管此时 Socket 仍可以继续写入，Netty 也不会再继续写入。这是因为执行 `flush` 操作的是 Reactor 线程，而 Reactor 线程负责执行注册在其上的所有 Channel 的 IO 操作。Netty 不允许 Reactor 线程长时间在一个 Channel 上执行 IO 操作，而是需要将执行时间均匀地分配到每个 Channel 上。因此，在这种情况下，Netty 会停止当前的写入操作，转而处理其他 Channel 上的 IO 事件。
 
@@ -1970,7 +1768,7 @@ protected final void incompleteWrite(boolean setOpWrite) {
     }
 ```
 
-这个方法的 if 分支逻辑， 在介绍 `do {.....} while()` 循环体的 `write loop` 发送逻辑时，我们提到过：在 `write loop` 循环发送数据的过程中，如果发现 Socket 缓冲区已满，无法继续写入数据（即 `localWrittenBytes <= 0`），则需要向 Reactor 注册 `OP_WRITE` 事件。等到 Socket 缓冲区变为可写状态时，`epoll` 会通知 Reactor 线程继续写入剩下的数据。  
+这个方法的 `if` 分支逻辑，在介绍 `do {.....} while()` 循环体的 `write loop` 发送逻辑时，我们提到过：在 `write loop` 循环发送数据的过程中，如果发现 Socket 缓冲区已满，无法继续写入数据（即 `localWrittenBytes <= 0`），则需要向 Reactor 注册 `OP_WRITE` 事件。等到 Socket 缓冲区变为可写状态时，`epoll` 会通知 Reactor 线程继续写入剩下的数据。  
 
 ```java
 do {
@@ -2006,9 +1804,9 @@ do {
 } while (writeSpinCount > 0);
 ```
 
-注意 if 分支处理的情况是还没写满 16 次，但是 Socket 缓冲区已满，无法写入的情况。
+注意，`if` 分支处理的情况是还没写满 `16 次`，但是 Socket 缓冲区已满，无法写入的情况。
 
-而`else` 分支处理的是另一种情况：即 Socket 缓冲区是可写的，但已经写满 **16 次**，在本轮 `write loop` 中无法再继续写入。
+而 `else` 分支处理的是另一种情况：即 Socket 缓冲区是可写的，但已经写满 `16 次`，在本轮 `write loop` 中无法再继续写入。
 
 在这种情况下，Netty 会将 Channel 中剩下的待写数据的 `flush` 操作封装成 `flushTask`，并将其放入 Reactor 的普通任务队列中。等待 Reactor 执行完其他 Channel 上的 IO 操作后，便会回过头来执行未写完的 `flush` 任务。
 
@@ -2021,20 +1819,20 @@ private final Runnable flushTask = new Runnable() {
 };
 ```
 
-这里我们看到 flushTask 中的任务是直接再次调用 flush0 继续回到发送数据的逻辑流程中。
+这里我们看到 `flushTask` 中的任务是直接再次调用 `flush0`，继续回到发送数据的逻辑流程中。
 
-**为什么使用 flushTask 而非注册 OP_WRITE 事件？**  
+::: warning 为什么使用 `flushTask` 而非注册 `OP_WRITE` 事件？原因如下
 
-**原因如下：**
-
-1. **Socket 缓冲区可写**：这里的 `else` 分支处理的是 Socket 缓冲区未满且可写的情况，但用户本次要发送的数据量过大，导致已经写了 **16 次** 但仍未写完。
+1. **Socket 缓冲区可写**：这里的 `else` 分支处理的是 Socket 缓冲区未满且可写的情况，但用户本次要发送的数据量过大，导致已经写了 `16 次` 但仍未写完。
 2. **避免重复通知**：既然当前 Socket 缓冲区是可写的，注册 `OP_WRITE` 事件将导致一直收到 `epoll` 的通知。这是因为 JDK NIO Selector 默认使用的是 `epoll` 的水平触发模式。在这种模式下，只要 Socket 可写，`epoll` 就会不断通知 Reactor 线程，导致不必要的重复处理。
 
- 因此，在这种情况下，唯一合理的做法是向 Reactor 提交 `flushTask`，以继续完成剩下数据的写入，而不是注册 `OP_WRITE` 事件。  
+:::
 
-注意：只有当 Socket 缓冲区已满导致无法写入时，Netty 才会去注册 OP_WRITE 事件。这和我们之前介绍的 OP_ACCEPT 事件和 OP_READ 事件的注册时机是不同的。
+因此，在这种情况下，唯一合理的做法是向 Reactor 提交 `flushTask`，以继续完成剩下数据的写入，而不是注册 `OP_WRITE` 事件。
 
-**这里大家可能还会有另一个疑问，就是为什么在向 reactor 提交 flushTask 之前需要清理 OP_WRITE 事件呢？** 我们并没有注册 OP_WRITE 事件呀~~
+注意：只有当 Socket 缓冲区已满导致无法写入时，Netty 才会去注册 `OP_WRITE` 事件。这与我们之前介绍的 `OP_ACCEPT` 事件和 `OP_READ` 事件的注册时机是不同的。
+
+**这里大家可能还会有另一个疑问，就是为什么在向 Reactor 提交 `flushTask` 之前需要清理 `OP_WRITE` 事件呢？** 我们并没有注册 `OP_WRITE` 事件呀。
 
 ```java
 protected final void incompleteWrite(boolean setOpWrite) {
@@ -2048,9 +1846,9 @@ protected final void incompleteWrite(boolean setOpWrite) {
 
 在为大家解答这个疑问之前，笔者先为大家介绍下 Netty 是如何处理 OP_WRITE 事件的，当大家明白了 OP_WRITE 事件的处理逻辑后，这个疑问就自然解开了。
 
-## 7、OP_WRITE 事件的处理
+## OP_WRITE 事件的处理
 
-在[?《一文聊透Netty核心引擎Reactor的运转架构》](https://mp.weixin.qq.com/s?__biz=Mzg2MzU3Mjc3Ng==&mid=2247484087&idx=1&sn=0c065780e0f05c23c8e6465ede86cba0&chksm=ce77c4f0f9004de63be369a664105708bc5975b52993f4a6df223caed34cc1ef6185a16acd75&scene=21#wechat_redirect)一文中，我们介绍过，当 Reactor 监听到 channel 上有 IO 事件发生后，最终会在 processSelectedKey 方法中处理 channel 上的 IO 事件，其中 OP_ACCEPT 事件和 OP_READ 事件的处理过程，笔者已经在之前的系列文章中介绍过了，这里我们聚焦于 OP_WRITE 事件的处理。
+在[《核心引擎 Reactor 的运转架构》](/netty_source_code_parsing/main_task/event_scheduling_layer/reactor_dispatch)一文中，我们介绍过，当 Reactor 监听到 channel 上有 IO 事件发生后，最终会在 `processSelectedKey` 方法中处理 channel 上的 IO 事件。其中，`OP_ACCEPT` 事件和 `OP_READ` 事件的处理过程，笔者已经在之前的系列文章中介绍过了，这里我们聚焦于 `OP_WRITE` 事件的处理。
 
 ```java
 public final class NioEventLoop extends SingleThreadEventLoop {
@@ -2082,7 +1880,7 @@ public final class NioEventLoop extends SingleThreadEventLoop {
 }
 ```
 
-这里我们看到当 OP_WRITE 事件发生后，Netty 直接调用 channel 的 forceFlush 方法。
+这里我们看到，当 `OP_WRITE` 事件发生后，Netty 直接调用 `channel` 的 `forceFlush` 方法。
 
 ```java
 @Override
@@ -2092,7 +1890,7 @@ public final void forceFlush() {
 }
 ```
 
-其实 forceFlush 方法中并没有什么特殊的逻辑，直接调用 flush0 方法再次发起 flush 操作继续 channel 中剩下数据的写入。
+其实 `forceFlush` 方法中并没有什么特殊的逻辑，它只是直接调用 `flush0` 方法，再次发起 `flush` 操作，以继续写入 `channel` 中剩下的数据。
 
 ```java
 @Override
@@ -2125,12 +1923,14 @@ protected void doWrite(ChannelOutboundBuffer in) throws Exception {
 }
 ```
 
-在数据发送的过程中，`clearOpWrite()` 方法具有重要作用。当 Channel 上的 `OP_WRITE` 事件就绪时，表示此时 Socket 缓冲区已变为可写状态，Reactor 线程再次进入到 flush 流程中。 
+在数据发送的过程中，`clearOpWrite()` 方法具有重要作用。当 `Channel` 上的 `OP_WRITE` 事件就绪时，表示此时 Socket 缓冲区已变为可写状态，Reactor 线程再次进入到 `flush` 流程中。
 
-**清理 OP_WRITE 事件的必要性**   
+::: warning 清理 OP_WRITE 事件的必要性
 
 - **数据全部写完**：当 `ChannelOutboundBuffer` 中的数据全部写完时（即 `in.isEmpty()`），需要调用 `clearOpWrite()` 方法以取消对 `OP_WRITE` 事件的监听。这是因为此时 Socket 缓冲区是可写的，若不取消监听，`epoll` 将不断通知 Reactor。
-- **在 incompleteWrite 方法中的处理**：同理，在 `incompleteWrite` 方法的 `else` 分支中，也需要执行 `clearOpWrite()` 方法，以确保在 Socket 缓冲区可写的情况下取消对 `OP_WRITE` 事件的监听。
+- **在 `incompleteWrite` 方法中的处理**：同理，在 `incompleteWrite` 方法的 `else` 分支中，也需要执行 `clearOpWrite()` 方法，以确保在 Socket 缓冲区可写的情况下取消对 `OP_WRITE` 事件的监听。
+
+:::
 
 ```java
 protected final void incompleteWrite(boolean setOpWrite) {
@@ -2151,11 +1951,11 @@ protected final void incompleteWrite(boolean setOpWrite) {
 }
 ```
 
-## 8、writeAndFlush
+## writeAndFlush
 
-在我们讲完了 write 事件和 flush 事件的处理过程之后，writeAndFlush 就变得很简单了，它就是把 write 和 flush 流程结合起来，先触发 write 事件然后在触发 flush 事件。
+在我们讲完 `write` 事件和 `flush` 事件的处理过程之后，`writeAndFlush` 就变得很简单了。它就是将 `write` 和 `flush` 流程结合起来，先触发 `write` 事件，然后再触发 `flush` 事件。
 
-下面我们来看下 writeAndFlush 的具体逻辑处理：
+下面我们来看一下 `writeAndFlush` 的具体逻辑处理：
 
 ```java
 public class EchoServerHandler extends ChannelInboundHandlerAdapter {
@@ -2182,7 +1982,7 @@ abstract class AbstractChannelHandlerContext implements ChannelHandlerContext, R
 }
 ```
 
-这里可以看到 writeAndFlush 方法的处理入口和 write 事件的处理入口是一样的。唯一不同的是入口处理函数 write 方法的 boolean flush 入参不同，在 writeAndFlush 的处理中 flush = true。
+这里可以看到 `writeAndFlush` 方法的处理入口和 `write` 事件的处理入口是一样的。唯一不同的是，入口处理函数 `write` 方法的 `boolean flush` 入参不同，在 `writeAndFlush` 的处理中，`flush` 被设置为 `true`。
 
 ```java
 private void write(Object msg, boolean flush, ChannelPromise promise) {
@@ -2216,9 +2016,9 @@ private void write(Object msg, boolean flush, ChannelPromise promise) {
 }
 ```
 
-由于在 writeAndFlush 流程的处理中，flush 标志被设置为 true，所以这里有两个地方会和 write 事件的处理有所不同。
+由于在 `writeAndFlush` 流程的处理中，`flush` 标志被设置为 `true`，所以这里有两个地方会和 `write` 事件的处理有所不同。
 
-- `findContextOutbound( MASK_WRITE | MASK_FLUSH )`：这里在 pipeline 中向前查找的 ChanneOutboundHandler 需要实现 write 方法或者 flush 方法。这里需要注意的是 write 方法和 flush 方法只需要实现其中一个即可满足查找条件。因为一般我们自定义 ChannelOutboundHandler 时，都会继承 ChannelOutboundHandlerAdapter 类，而在 ChannelInboundHandlerAdapter 类中对于这些 outbound 事件都会有默认的实现。
+- `findContextOutbound(MASK_WRITE | MASK_FLUSH)`：这里在 pipeline 中向前查找的 `ChannelOutboundHandler` 需要实现 `write` 方法或者 `flush` 方法。需要注意的是，`write` 方法和 `flush` 方法只需实现其中一个即可满足查找条件。因为一般我们自定义 `ChannelOutboundHandler` 时，都会继承 `ChannelOutboundHandlerAdapter` 类，而在 `ChannelInboundHandlerAdapter` 类中，对于这些 outbound 事件都会有默认的实现。
 
 ```java
 public class ChannelOutboundHandlerAdapter extends ChannelHandlerAdapter implements ChannelOutboundHandler {
@@ -2239,9 +2039,9 @@ public class ChannelOutboundHandlerAdapter extends ChannelHandlerAdapter impleme
 }
 ```
 
-这样在后面传播 write 事件或者 flush 事件的时候，我们通过上面逻辑找出的 ChannelOutboundHandler 中可能只实现了一个 flush 方法或者 write 方法。不过这样没关系，如果这里在传播 outbound 事件的过程中，发现找出的 ChannelOutboundHandler 中并没有实现对应的 outbound 事件回调函数，那么就直接调用在 ChannelOutboundHandlerAdapter 中的默认实现。
+这样，在后面传播 `write` 事件或者 `flush` 事件时，我们通过上面的逻辑找出的 `ChannelOutboundHandler` 可能只实现了一个 `flush` 方法或者 `write` 方法。不过这样没关系，因为如果在传播 outbound 事件的过程中，发现找出的 `ChannelOutboundHandler` 中并没有实现对应的 outbound 事件回调函数，就会直接调用 `ChannelOutboundHandlerAdapter` 中的默认实现。
 
-- 在向前传播 writeAndFlush 事件的时候会通过调用 ChannelHandlerContext 的 invokeWriteAndFlush 方法，先传播 write 事件 然后在传播 flush 事件。
+- 在向前传播 `writeAndFlush` 事件时，会通过调用 `ChannelHandlerContext` 的 `invokeWriteAndFlush` 方法，先传播 `write` 事件，然后再传播 `flush` 事件。
 
 ```java
 void invokeWriteAndFlush(Object msg, ChannelPromise promise) {
@@ -2273,46 +2073,50 @@ private void invokeFlush0() {
 }
 ```
 
-在 `writeAndFlush` 方法的核心处理逻辑中，首先是向前传播 `write` 事件，然后在经过相应的 `write` 事件处理流程后，最后传播 `flush` 事件。以下是更详细的步骤：
+在 `writeAndFlush` 方法的核心处理逻辑中，Netty 先向前传播 `write` 事件，然后在经过相应的 `write` 事件处理流程后，最后传播 `flush` 事件。以下是更详细的步骤：
 
-1. **向前传播** `**write**` **事件**:
+1. **向前传播 `write` 事件**:
+   - 当调用 `writeAndFlush` 方法时，Netty 会首先查找与当前 `Channel` 关联的 `ChannelOutboundHandler`。
+   - 如果找到的处理器仅实现了 `flush` 方法而未实现 `write` 方法，这并不影响数据的发送。Netty 会自动调用 `ChannelOutboundHandlerAdapter` 中的默认 `write` 方法来处理该事件。
+2. **传播 `flush` 事件**:
+   - 紧接着，在处理完 `write` 事件后，Netty 会继续向前传播 `flush` 事件。
+   - 类似于 `write` 事件的处理，若找到的处理器只实现了 `write` 方法而未实现 `flush` 方法，同样会调用父类 `ChannelOutboundHandlerAdapter` 中的默认实现，确保数据能够被正确刷新。
 
-- - 当调用 `writeAndFlush` 时，Netty 会首先查找与当前 `Channel` 关联的 `ChannelOutboundHandler`。
-  - 如果找到的处理器仅实现了 `flush` 方法而未实现 `write` 方法，这并不影响数据的发送。Netty 会自动调用 `ChannelOutboundHandlerAdapter` 中的默认 `write` 方法来处理该事件。
-
-1. **传播** `**flush**` **事件**:
-
-- - 紧接着，在处理完 `write` 事件后，Netty 会继续向前传播 `flush` 事件。
-  - 类似于 `write` 事件的处理，若找到的处理器只实现了 `write` 方法而未实现 `flush` 方法，同样会调用父类 `ChannelOutboundHandlerAdapter` 中的默认实现，确保数据能够被正确刷新。
+通过这种方式，Netty 保证了即使在处理器的实现不完整的情况下，数据也能够正确发送和刷新，从而保持了框架的灵活性和可扩展性。
 
 ## 总结
 
-到这里，Netty 处理数据发送的整个完整流程，笔者就为大家详细地介绍完了。可以看到，虽然 Netty 在处理读取数据和发送数据的过程中核心逻辑相似，但发送数据的过程明显细节更多且更复杂。
+到这里，Netty 处理数据发送的整个完整流程，笔者就为大家详细介绍完了。可以看到，虽然 Netty 在处理读取数据和发送数据的过程中核心逻辑相似，但发送数据的过程明显细节更多且更复杂。
 
 笔者将读取数据和发送数据的不同之处总结如下几点供大家回忆对比：
 
 - **读取数据**：
 
-- - 在每次 **read loop** 之前，会分配一个固定大小的 **DirectByteBuffer** 用于装载读取的数据。每轮 **read loop** 完全结束后，才会决定是否对下一轮读取过程分配的 **DirectByteBuffer** 进行扩容或缩容。
+  - 在每次 **read loop** 之前，会分配一个固定大小的 **DirectByteBuffer** 用于装载读取的数据。每轮 **read loop** 完全结束后，才会决定是否对下一轮读取过程分配的 **DirectByteBuffer** 进行扩容或缩容。
 
 - **发送数据**：
 
-- - 在每次 **write loop** 之前，都会获取本次 **write loop** 最大能够写入的字节数，根据这个最大写入字节数从 **ChannelOutboundBuffer** 中转换为 JDK NIO **ByteBuffer**。每次写入 **Socket** 之后都需要重新评估是否对这个最大写入字节数进行扩容或缩容。
+  - 在每次 **write loop** 之前，都会获取本次 **write loop** 最大能够写入的字节数，根据这个最大写入字节数从 **ChannelOutboundBuffer** 中转换为 JDK NIO **ByteBuffer**。每次写入 **Socket** 之后都需要重新评估是否对这个最大写入字节数进行扩容或缩容。
 
 - **循环次数**：
 
-- - **read loop** 和 **write loop** 都被默认限制为最多执行 16 次。
+  - **read loop** 和 **write loop** 都被默认限制为最多执行 16 次。
 
 - **循环结束策略**：
 
-- - 在一个完整的 **read loop** 中，如果还未读取完数据，直接退出。等到 **Reactor** 线程执行完其他 **Channel** 上的 IO 事件后再读取未读完的数据。
-  - 而在一个完整的 **write loop** 中，数据发送不完则分为两种情况：
+  - 在一个完整的 **read loop** 中，如果还未读取完数据，直接退出。等到 **Reactor** 线程执行完其他 **Channel** 上的 IO 事件后再读取未读完的数据。
 
-- - - **Socket** 缓冲区满，无法继续写入。这时需要向 **Reactor** 注册 **OP_WRITE** 事件。等 **Socket** 缓冲区变得可写时，`epoll` 通知 **Reactor** 线程继续发送。
+  - 而在一个完整的 
+
+    write loop
+
+     中，数据发送不完则分为两种情况：
+
+    - **Socket** 缓冲区满，无法继续写入。这时需要向 **Reactor** 注册 **OP_WRITE** 事件。等 **Socket** 缓冲区变得可写时，`epoll` 通知 **Reactor** 线程继续发送。
     - **Socket** 缓冲区可写，但由于发送数据太多，导致虽然写满 16 次仍未写完。这时直接向 **Reactor** 丢一个 **flushTask**，等到 **Reactor** 线程执行完其他 **Channel** 上的 IO 事件后，再执行 **flushTask**。
 
 - **事件注册**：
 
-- - **OP_READ** 事件的注册是在 **NioSocketChannel** 被注册到对应的 **Reactor** 中时进行的。而 **OP_WRITE** 事件只会在 **Socket** 缓冲区满时才注册。当 **Socket** 缓冲区再次变得可写时，要记得取消 **OP_WRITE** 事件的监听，否则会一直被通知。
+  - **OP_READ** 事件的注册是在 **NioSocketChannel** 被注册到对应的 **Reactor** 中时进行的。而 **OP_WRITE** 事件只会在 **Socket** 缓冲区满时才注册。当 **Socket** 缓冲区再次变得可写时，要记得取消 **OP_WRITE** 事件的监听，否则会一直被通知。
 
-好了，本文的全部内容就到这里了，我们下篇文章见
+好了，本文的全部内容就到这里了，我们下篇文章见。

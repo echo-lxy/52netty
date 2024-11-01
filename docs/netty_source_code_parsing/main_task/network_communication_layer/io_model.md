@@ -41,7 +41,7 @@
 
 经过前边对网络数据包接收流程的介绍，在这里我们可以将整个流程总结为两个阶段：
 
-<img src="https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410311427739.png" alt="image-20241031142717645" style="zoom:50%;" />
+<img src="https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410311427739.png?x-oss-process=image/watermark,image_aW1nL3dhdGVyLnBuZw==,g_nw,x_1,y_1" alt="image-20241031142717645" style="zoom: 33%;" />
 
 
 
@@ -58,7 +58,7 @@
 
 如果这时内核`Socket`的接收缓冲区没有数据，那么线程就会一直`等待`，直到`Socket`接收缓冲区有数据为止。随后将数据从内核空间拷贝到用户空间，`系统调用read`返回。
 
-![image-20241031142741514](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410311427603.png)
+<img src="https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410311427603.png?x-oss-process=image/watermark,image_aW1nL3dhdGVyLnBuZw==,g_nw,x_1,y_1" alt="image-20241031142741514" style="zoom: 33%;" />
 
 从图中我们可以看出：**阻塞**的特点是在第一阶段和第二阶段`都会等待`。
 
@@ -69,7 +69,7 @@
 - 在第一阶段，当`Socket`的接收缓冲区中没有数据的时候，`阻塞模式下`应用线程会一直等待。`非阻塞模式下`应用线程不会等待，`系统调用`直接返回错误标志`EWOULDBLOCK`。
 - 当`Socket`的接收缓冲区中有数据的时候，`阻塞`和`非阻塞`的表现是一样的，都会进入第二阶段`等待`数据从`内核空间`拷贝到`用户空间`，然后`系统调用返回`。
 
-![image-20241031142753869](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410311427971.png)
+<img src="https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410311427971.png?x-oss-process=image/watermark,image_aW1nL3dhdGVyLnBuZw==,g_nw,x_1,y_1" alt="image-20241031142753869" style="zoom:33%;" />
 
 从上图中，我们可以看出：**非阻塞**的特点是第一阶段`不会等待`，但是在第二阶段还是会`等待`。
 
@@ -87,7 +87,7 @@
 
 Linux下的 `epoll`和Mac 下的 `kqueue`都属于`同步 IO`。
 
-![image-20241031123517877](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410311235936.png)
+<img src="https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410311235936.png?x-oss-process=image/watermark,image_aW1nL3dhdGVyLnBuZw==,g_ne,x_1,y_1" alt="image-20241031123517877" style="zoom:33%;" />
 
 #### 异步
 
@@ -101,7 +101,7 @@ Linux下的 `epoll`和Mac 下的 `kqueue`都属于`同步 IO`。
 
 但Linux kernel 在5.1版本由Facebook的大神Jens Axboe引入了新的异步IO库`io_uring` 改善了原来Linux native AIO的一些性能问题。性能相比`Epoll`以及之前原生的`AIO`提高了不少，值得关注。
 
-![image-20241031142918615](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410311429679.png)
+<img src="https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410311429679.png?x-oss-process=image/watermark,image_aW1nL3dhdGVyLnBuZw==,g_ne,x_1,y_1" alt="image-20241031142918615" style="zoom:33%;" />
 
 ## IO 模型
 
@@ -111,7 +111,7 @@ Linux下的 `epoll`和Mac 下的 `kqueue`都属于`同步 IO`。
 
 ### 阻塞IO
 
-![image-20241031143122474](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410311431597.png)
+<img src="https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410311431597.png?x-oss-process=image/watermark,image_aW1nL3dhdGVyLnBuZw==,g_nw,x_1,y_1" alt="image-20241031143122474" style="zoom:33%;" />
 
 #### 阻塞读
 
@@ -131,7 +131,7 @@ Linux下的 `epoll`和Mac 下的 `kqueue`都属于`同步 IO`。
 
 #### 阻塞 IO 线程模型
 
-![image-20241031143156001](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410311431102.png)
+<img src="https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410311431102.png?x-oss-process=image/watermark,image_aW1nL3dhdGVyLnBuZw==,g_nw,x_1,y_1" alt="image-20241031143156001" style="zoom:33%;" />
 
 由于`阻塞IO`的读写特点，所以导致在`阻塞IO`模型下，每个请求都需要被一个独立的线程处理。一个线程在同一时刻只能与一个连接绑定。来一个请求，服务端就需要创建一个线程用来处理请求。
 
@@ -151,7 +151,7 @@ Linux下的 `epoll`和Mac 下的 `kqueue`都属于`同步 IO`。
 
 `阻塞IO模型`最大的问题就是一个线程只能处理一个连接，如果这个连接上没有数据的话，那么这个线程就只能阻塞在系统IO调用上，不能干其他的事情
 
-![image-20241031143225187](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410311432287.png)
+<img src="https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410311432287.png?x-oss-process=image/watermark,image_aW1nL3dhdGVyLnBuZw==,g_nw,x_1,y_1" alt="image-20241031143225187" style="zoom:33%;" />
 
 #### 阻塞读
 
@@ -166,9 +166,9 @@ Linux下的 `epoll`和Mac 下的 `kqueue`都属于`同步 IO`。
 
 相比较而言`非阻塞写`的特点就比较佛系，当发送缓冲区中没有足够的空间容纳全部发送数据时，`非阻塞写`的特点是`能写多少写多少`，写不下了，就立即返回。并将写入到发送缓冲区的字节数返回给应用程序，方便用户线程不断的`轮训`尝试将`剩下的数据`写入发送缓冲区中。
 
-#### 阻塞 IO 线程模型
+#### 非阻塞 IO 线程模型
 
-![image-20241031143503642](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410311435732.png)
+<img src="https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410311435732.png?x-oss-process=image/watermark,image_aW1nL3dhdGVyLnBuZw==,g_nw,x_1,y_1" alt="image-20241031143503642" style="zoom:33%;" />
 
 基于以上`非阻塞IO`的特点，我们就不必像`阻塞IO`那样为每个请求分配一个线程去处理连接上的读写了。
 

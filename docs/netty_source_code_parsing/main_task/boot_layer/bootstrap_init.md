@@ -1,16 +1,16 @@
-# BootStrap 初始化
+# BootStrap 初始化 Netty 服务
 
 ## 前言
 
-在结束了 [《网络通信层 | 图解Netty》](http://localhost:5173/netty_source_code_parsing/main_task/network_communication_layer/socket_network_programming.html)的学习之后，我们终于可以正式开始 Netty 的源码学习了！  
+在完成了 [《网络通信层 》](/netty_source_code_parsing/main_task/network_communication_layer/socket_network_programming)的学习之后，我们终于可以正式开始 Netty 的源码学习了！  
 
 先来引出 Netty 中使用的 **主从 Reactor IO 线程模型**
 
-![image-20241031153016594](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410311530775.png)
+![image-20241031153016594](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410311530775.png?x-oss-process=image/watermark,image_aW1nL3dhdGVyLnBuZw==,g_nw,x_1,y_1)
 
 它在实现上又与 **Doug Lea** 在 [Scalable IO in Java](https://gee.cs.oswego.edu/dl/cpjslides/nio.pdf) 论文中提到的经典 **主从Reactor多线程模型** 有所差异
 
-![image-20241029194601543](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/image-20241029194601543.png)
+<img src="https://echo798.oss-cn-shenzhen.aliyuncs.com/img/image-20241029194601543.png" alt="image-20241029194601543" style="zoom:50%;" />
 
 
 
@@ -450,7 +450,7 @@ Reactor 内的异步任务队列类型为 `MpscQueue`，这是由 JCTools 提供
 
 我们知道，Netty 中的 Reactor 能够线程安全地处理注册在其上的多个 `SocketChannel` 的 IO 数据，保证 Reactor 线程安全的核心原因正是因为这个 `MpscQueue`。它支持多个业务线程在处理完业务逻辑后，线程安全地向 `MpscQueue` 添加异步写任务，随后由单个 Reactor 线程来执行这些写任务。既然是单线程执行，那么其本身就具有线程安全性。【TODO】MpscQueue
 
-![image-20241031153415232](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410311534290.png)
+<img src="https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410311534290.png?x-oss-process=image/watermark,image_aW1nL3dhdGVyLnBuZw==,g_nw,x_1,y_1" alt="image-20241031153415232" style="zoom:33%;" />
 
 #### 3、创建 Channel 到 Reactor 的绑定策略
 
@@ -561,7 +561,7 @@ public final class EchoServer {
 
 现在Netty的`主从Reactor线程组`就已经创建完毕，此时Netty服务端的骨架已经搭建完毕，骨架如下：
 
-![image-20241031153401184](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410311534277.png)
+<img src="https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410311534277.png?x-oss-process=image/watermark,image_aW1nL3dhdGVyLnBuZw==,b_nw,x_1,y_1" alt="image-20241031153401184" style="zoom:33%;" />
 
 ## 总结
 

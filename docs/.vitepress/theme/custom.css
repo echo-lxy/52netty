@@ -18,3 +18,10 @@
     --vp-home-hero-image-filter: blur(68px);
   }
 }
+
+.content img {
+  display: block; /* 确保图像为块级元素 */
+  margin: 0 auto; /* 自动左右外边距以实现居中 */
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2); /* 添加阴影效果 */
+  border-radius: 4px; /* 可选：使边角圆润 */
+}

@@ -186,7 +186,7 @@ export default defineConfig({
             collapsed: true,
             items: [
               {
-                // text: "Netty 的内存管理机制简介",
+                text: "Netty 的内存管理机制简介",
                 // link: "/memory_management/introduction",
               },
               {
@@ -205,10 +205,10 @@ export default defineConfig({
                     text: "对象池",
                     link: "/memory_management/pooling_techniques/object_pool.md",
                   },
-                  // {
-                  //   text: "内存池",
-                  //   link: "/memory_management/pooling_techniques/memory_pool.md",
-                  // },
+                  {
+                    text: "内存池",
+                    link: "/memory_management/pooling_techniques/memory_pool.md",
+                  },
                 ],
               },
             ],

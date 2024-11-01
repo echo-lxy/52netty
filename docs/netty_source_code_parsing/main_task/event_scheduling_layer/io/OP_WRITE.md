@@ -36,8 +36,6 @@ public class EchoServerHandler extends ChannelInboundHandlerAdapter {
 
 本文将专注于 Netty 写数据的过程，对于 Netty 编解码相关的内容，笔者会在后续的文章中专门介绍。
 
-
-
 ## write 方法发送数据
 
 ### 传播 write 事件
@@ -85,7 +83,7 @@ public void channelRead(final ChannelHandlerContext ctx, final Object msg) {
             Throwable cause = future.cause();
             if (cause != null) {
                  处理异常情况
-            } else {                    
+            } else {
                  写入Socket成功后，Netty会通知到这里
             }
         }
@@ -136,9 +134,9 @@ private void write(Object msg, boolean flush, ChannelPromise promise) {
 
 ![image-20241031174147729](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410311741849.png?x-oss-process=image/watermark,image_aW1nL3dhdGVyLnBuZw==,g_nw,x_1,y_1)
 
- 在这里，我们需要使用 `findContextOutbound` 方法，在当前 `ChannelHandler` 前的链路中查找一个类型为 `ChannelOutboundHandler` 的处理器，并确保其覆盖实现了 `write` 回调方法。找到后，该 `ChannelHandler` 将作为下一个执行目标。   
+在这里，我们需要使用 `findContextOutbound` 方法，在当前 `ChannelHandler` 前的链路中查找一个类型为 `ChannelOutboundHandler` 的处理器，并确保其覆盖实现了 `write` 回调方法。找到后，该 `ChannelHandler` 将作为下一个执行目标。
 
-通过 `findContextOutbound` 方法，我们在 `pipeline` 中找到了下一个具有执行资格的 `ChannelHandler`，即下一个类型为 `ChannelOutboundHandler` 且覆盖实现了 `write` 方法的 `ChannelHandler`。接下来，Netty 会调用这个 `nextChannelHandler` 的 `write` 方法，以实现 `write` 事件在 `pipeline` 中的传播。  
+通过 `findContextOutbound` 方法，我们在 `pipeline` 中找到了下一个具有执行资格的 `ChannelHandler`，即下一个类型为 `ChannelOutboundHandler` 且覆盖实现了 `write` 方法的 `ChannelHandler`。接下来，Netty 会调用这个 `nextChannelHandler` 的 `write` 方法，以实现 `write` 事件在 `pipeline` 中的传播。
 
 ```java
 private void write(Object msg, boolean flush, ChannelPromise promise) {
@@ -188,13 +186,13 @@ EventExecutor executor = next.executor()
 
 在此，Netty 需要确保 `outbound` 事件是由 `ChannelHandler` 指定的 `executor` 执行的。
 
-**这里有些同学可能会有疑问，如果我们向pipieline添加ChannelHandler的时候，为每个ChannelHandler指定不同的executor时，Netty如果确保线程安全呢**？？
+**这里有些同学可能会有疑问，如果我们向 pipieline 添加 ChannelHandler 的时候，为每个 ChannelHandler 指定不同的 executor 时，Netty 如果确保线程安全呢**？？
 
-大家还记得pipeline中的结构吗？
+大家还记得 pipeline 中的结构吗？
 
 <img src="https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410311742560.png?x-oss-process=image/watermark,image_aW1nL3dhdGVyLnBuZw==,g_nw,x_1,y_1" alt="image-20241031174210480" style="zoom:50%;" />
 
-`outbound` 事件在 `pipeline` 中的传播最终会到达 `HeadContext`。在之前的系列文章中，我们提到过，`HeadContext` 封装了 `Channel` 的 `Unsafe` 类，负责 `Channel` 底层的 IO 操作。值得注意的是，`HeadContext` 指定的 `executor` 正是与 `channel` 绑定的 Reactor 线程。  
+`outbound` 事件在 `pipeline` 中的传播最终会到达 `HeadContext`。在之前的系列文章中，我们提到过，`HeadContext` 封装了 `Channel` 的 `Unsafe` 类，负责 `Channel` 底层的 IO 操作。值得注意的是，`HeadContext` 指定的 `executor` 正是与 `channel` 绑定的 Reactor 线程。
 
 ![image-20241101141309452](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202411011413564.png)
 
@@ -239,7 +237,7 @@ private boolean invokeHandler() {
 }
 ```
 
-只有在触发 `handlerAdded` 回调后，`ChannelHandler` 的状态才能变为 `ADD_COMPLETE`。如果 `invokeHandler()` 方法返回 `false`，则需要跳过这个 `nextChannelHandler`，并调用 `ChannelHandlerContext#write` 方法继续向前传播 `write` 事件。  
+只有在触发 `handlerAdded` 回调后，`ChannelHandler` 的状态才能变为 `ADD_COMPLETE`。如果 `invokeHandler()` 方法返回 `false`，则需要跳过这个 `nextChannelHandler`，并调用 `ChannelHandlerContext#write` 方法继续向前传播 `write` 事件。
 
 ```java
 @Override
@@ -250,7 +248,7 @@ public ChannelFuture write(final Object msg, final ChannelPromise promise) {
 }
 ```
 
- 如果 `invokeHandler()` 返回 `true`，则说明 `nextChannelHandler` 已经在 `pipeline` 中正确初始化。此时，Netty 会直接调用该 `ChannelHandler` 的 `write` 方法，从而实现 `write` 事件从当前 `ChannelHandler` 传播到 `nextChannelHandler`。  
+如果 `invokeHandler()` 返回 `true`，则说明 `nextChannelHandler` 已经在 `pipeline` 中正确初始化。此时，Netty 会直接调用该 `ChannelHandler` 的 `write` 方法，从而实现 `write` 事件从当前 `ChannelHandler` 传播到 `nextChannelHandler`。
 
 ```java
 private void invokeWrite0(Object msg, ChannelPromise promise) {
@@ -267,14 +265,14 @@ private void invokeWrite0(Object msg, ChannelPromise promise) {
 
 <img src="https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410311742560.png?x-oss-process=image/watermark,image_aW1nL3dhdGVyLnBuZw==,g_nw,x_1,y_1" alt="image-20241031174210480" style="zoom:50%;" />
 
- 从本文示例的 `pipeline` 结构中可以看出，当在 `EchoServerHandler` 中调用 `ChannelHandlerContext#write` 方法后，`write` 事件会在 `pipeline` 中向前传播至 `HeadContext`。在 `HeadContext` 中，Netty 才会真正处理 `write` 事件。  
+从本文示例的 `pipeline` 结构中可以看出，当在 `EchoServerHandler` 中调用 `ChannelHandlerContext#write` 方法后，`write` 事件会在 `pipeline` 中向前传播至 `HeadContext`。在 `HeadContext` 中，Netty 才会真正处理 `write` 事件。
 
 ### HeadContext
 
 ```java
 final class HeadContext extends AbstractChannelHandlerContext
         implements ChannelOutboundHandler, ChannelInboundHandler {
-      
+
     @Override
     public void write(ChannelHandlerContext ctx, Object msg, ChannelPromise promise) {
         unsafe.write(msg, promise);
@@ -282,13 +280,13 @@ final class HeadContext extends AbstractChannelHandlerContext
 }
 ```
 
-`write` 事件最终会在 `pipeline` 中传播到 `HeadContext`，并回调 `HeadContext` 的 `write` 方法。在这个回调中，会调用 `channel` 的 `Unsafe` 类以执行底层的 `write` 操作。这正是 `write` 事件在 `pipeline` 中传播的终点。  
+`write` 事件最终会在 `pipeline` 中传播到 `HeadContext`，并回调 `HeadContext` 的 `write` 方法。在这个回调中，会调用 `channel` 的 `Unsafe` 类以执行底层的 `write` 操作。这正是 `write` 事件在 `pipeline` 中传播的终点。
 
 <img src="https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410311801283.png?x-oss-process=image/watermark,image_aW1nL3dhdGVyLnBuZw==,g_nw,x_1,y_1" alt="image-20241031180100928" style="zoom: 33%;" />
 
 ```java
 protected abstract class AbstractUnsafe implements Unsafe {
-    //待发送数据缓冲队列  Netty是全异步框架，所以这里需要一个缓冲队列来缓存用户需要发送的数据 
+    //待发送数据缓冲队列  Netty是全异步框架，所以这里需要一个缓冲队列来缓存用户需要发送的数据
     private volatile ChannelOutboundBuffer outboundBuffer = new ChannelOutboundBuffer(AbstractChannel.this);
 
     @Override
@@ -324,11 +322,11 @@ protected abstract class AbstractUnsafe implements Unsafe {
 
 #### filterOutboundMessage
 
-`ChannelOutboundBuffer` 仅接受 `ByteBuffer` 类型和 `FileRegion` 类型的消息数据。  
+`ChannelOutboundBuffer` 仅接受 `ByteBuffer` 类型和 `FileRegion` 类型的消息数据。
 
-FileRegion 是Netty定义的用来通过零拷贝的方式网络传输文件数据。本文我们主要聚焦普通网络数据 ByteBuffer 的发送。
+FileRegion 是 Netty 定义的用来通过零拷贝的方式网络传输文件数据。本文我们主要聚焦普通网络数据 ByteBuffer 的发送。
 
- 因此，在将消息 (`msg`) 写入 `ChannelOutboundBuffer` 之前，我们需要检查待写入消息的类型，以确保它是 `ChannelOutboundBuffer` 可接受的类型。  
+因此，在将消息 (`msg`) 写入 `ChannelOutboundBuffer` 之前，我们需要检查待写入消息的类型，以确保它是 `ChannelOutboundBuffer` 可接受的类型。
 
 ```java
 public abstract class AbstractNioByteChannel extends AbstractNioChannel{
@@ -356,7 +354,7 @@ public abstract class AbstractNioByteChannel extends AbstractNioChannel{
 
 ```
 
-在网络数据传输过程中，Netty 为了减少数据从堆内存到堆外内存的拷贝，并缓解 GC 的压力，采用了 `DirectByteBuffer`，使用堆外内存来存放网络发送的数据。  
+在网络数据传输过程中，Netty 为了减少数据从堆内存到堆外内存的拷贝，并缓解 GC 的压力，采用了 `DirectByteBuffer`，使用堆外内存来存放网络发送的数据。
 
 #### estimatorHandle 计算当前 msg 的大小
 
@@ -383,7 +381,7 @@ public class DefaultChannelPipeline implements ChannelPipeline {
 }
 ```
 
- 在 `pipeline` 中，有一个 `estimatorHandle` 专门用于计算待发送 `ByteBuffer` 的大小。该 `estimatorHandle` 会在与 `pipeline` 对应的 `Channel` 配置类创建时被初始化。其实际类型为 `DefaultMessageSizeEstimator#HandleImpl`。  
+在 `pipeline` 中，有一个 `estimatorHandle` 专门用于计算待发送 `ByteBuffer` 的大小。该 `estimatorHandle` 会在与 `pipeline` 对应的 `Channel` 配置类创建时被初始化。其实际类型为 `DefaultMessageSizeEstimator#HandleImpl`。
 
 ```java
 public final class DefaultMessageSizeEstimator implements MessageSizeEstimator {
@@ -469,11 +467,11 @@ static final class Entry {
 }
 ```
 
-**我们看到Entry结构中一共有12个字段，其中1个静态字段和11个实例字段。**
+**我们看到 Entry 结构中一共有 12 个字段，其中 1 个静态字段和 11 个实例字段。**
 
-下面笔者就为大家介绍下这12个字段的含义及其作用，其中有些字段会在后面的场景中使用到，这里大家可能对有些字段理解起来比较模糊，不过没关系，这里能看懂多少是多少，不理解也没关系，这里介绍只是为了让大家混个眼熟，在后面流程的讲解中，笔者还会重新提到这些字段。
+下面笔者就为大家介绍下这 12 个字段的含义及其作用，其中有些字段会在后面的场景中使用到，这里大家可能对有些字段理解起来比较模糊，不过没关系，这里能看懂多少是多少，不理解也没关系，这里介绍只是为了让大家混个眼熟，在后面流程的讲解中，笔者还会重新提到这些字段。
 
-- `ObjectPool<Entry> RECYCLER`：Entry 的对象池，负责创建管理 Entry 实例，由于 Netty 是一个网络框架，所以 IO 读写就成了它的核心操作，在一个支持高性能高吞吐的网络框架中，会有大量的 IO 读写操作，那么就会导致频繁的创建 Entry 对象。我们都知道，创建一个实例对象以及 GC 回收这些实例对象都是需要性能开销的，那么在大量频繁创建 Entry 对象的场景下，引入对象池来复用创建好的 Entry 对象实例可以抵消掉由频繁创建对象以及GC回收对象所带来的性能开销。
+- `ObjectPool<Entry> RECYCLER`：Entry 的对象池，负责创建管理 Entry 实例，由于 Netty 是一个网络框架，所以 IO 读写就成了它的核心操作，在一个支持高性能高吞吐的网络框架中，会有大量的 IO 读写操作，那么就会导致频繁的创建 Entry 对象。我们都知道，创建一个实例对象以及 GC 回收这些实例对象都是需要性能开销的，那么在大量频繁创建 Entry 对象的场景下，引入对象池来复用创建好的 Entry 对象实例可以抵消掉由频繁创建对象以及 GC 回收对象所带来的性能开销。
 - `Handle<Entry> handle`：默认实现类型为 DefaultHandle ，用于数据发送完毕后，对象池回收 Entry 对象。由对象池 RECYCLER 在创建 Entry 对象的时候传递进来。
 - `Entry next`：ChannelOutboundBuffer 是一个单链表的结构，这里的 next 指针用于指向当前 Entry 节点的后继节点。
 - `Object msg`：应用程序待发送的网络数据，这里 msg 的类型为 DirectByteBuffer 或者 FileRegion（用于通过零拷贝的方式网络传输文件）。
@@ -481,27 +479,24 @@ static final class Entry {
 - `int count`：表示待发送数据 msg 中一共包含了多少个 ByteBuffer 需要发送。
 - `ChannelPromise promise`：ChannelHandlerContext#write 异步写操作返回的 ChannelFuture。当 Netty 将待发送数据写入到 Socket 中时会通过这个 ChannelPromise 通知应用程序发送结果。
 - `long progress`：表示当前的一个发送进度，已经发送了多少数据。
-- `long total`：Entry中总共需要发送多少数据。注意：这个字段并不包含 Entry 对象的内存占用大小。只是表示待发送网络数据的大小。
+- `long total`：Entry 中总共需要发送多少数据。注意：这个字段并不包含 Entry 对象的内存占用大小。只是表示待发送网络数据的大小。
 - `boolean cancelled`：应用程序调用的 write 操作是否被取消。
 - `int pendingSize`：表示待发送数据的内存占用总量。待发送数据在内存中的占用量分为两部分：
-  - Entry对象中所封装的待发送网络数据大小。
-  - Entry对象本身在内存中的占用量。
-
+  - Entry 对象中所封装的待发送网络数据大小。
+  - Entry 对象本身在内存中的占用量。
 
 ![image-20241031181427134](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410311814323.png)
 
 #### pendingSize 的作用
 
-设想这样一个场景：  由于网络拥塞或 Netty 客户端负载过高，导致网络数据的接收和处理速度逐渐减慢。TCP 的滑动窗口不断缩小，最终可能降至 0。这时，Netty 服务端却仍然在频繁地执行写操作，不断地将数据写入 `ChannelOutboundBuffer` 中。  
+设想这样一个场景： 由于网络拥塞或 Netty 客户端负载过高，导致网络数据的接收和处理速度逐渐减慢。TCP 的滑动窗口不断缩小，最终可能降至 0。这时，Netty 服务端却仍然在频繁地执行写操作，不断地将数据写入 `ChannelOutboundBuffer` 中。
 
-这种情况下，尽管数据无法发送出去，Netty 服务端却在不断写入数据，最终可能撑爆 `ChannelOutboundBuffer`，导致 **堆外内存的 OOM**（Out Of Memory）。因为 `ChannelOutboundBuffer` 中待发送的数据全部存储在堆外内存中。  
+这种情况下，尽管数据无法发送出去，Netty 服务端却在不断写入数据，最终可能撑爆 `ChannelOutboundBuffer`，导致 **堆外内存的 OOM**（Out Of Memory）。因为 `ChannelOutboundBuffer` 中待发送的数据全部存储在堆外内存中。
 
- 为了避免这种情况的发生，Netty 必须限制 `ChannelOutboundBuffer` 中待发送数据的内存占用总量，防止其无限增长。为此，Netty 中定义了 **高低水位线**，用来表示 `ChannelOutboundBuffer` 中待发送数据的内存占用量的上限和下限。  
+为了避免这种情况的发生，Netty 必须限制 `ChannelOutboundBuffer` 中待发送数据的内存占用总量，防止其无限增长。为此，Netty 中定义了 **高低水位线**，用来表示 `ChannelOutboundBuffer` 中待发送数据的内存占用量的上限和下限。
 
 - **高水位线**：当待发送数据的内存占用总量超过高水位线时，Netty 会将 `NioSocketChannel` 的状态标记为**不可写状态**，以防止 OOM 的发生。
 - **低水位线**：当待发送数据的内存占用总量低于低水位线时，Netty 会将 `NioSocketChannel` 的状态标记为**可写状态**。
-
-
 
 **那么，Netty 是如何记录** `ChannelOutboundBuffer` **中待发送数据的内存占用总量的呢？**
 
@@ -511,7 +506,7 @@ static final class Entry {
 
 因此，`Entry` 实例对象的内存占用是不可忽视的。如果只计算待发送数据的大小，而不考虑 `Entry` 对象的内存占用，可能会导致在未达到高水位线时，因大量 `Entry` 实例对象存在而发生 OOM。
 
-因此，`pendingSize` 的计算应包含待发送数据的大小和其 `Entry` 实例对象的内存占用大小，这样才能准确计算出 `ChannelOutboundBuffer` 中待发送数据的内存占用总量。`ChannelOutboundBuffer` 中所有 `Entry` 实例中的 `pendingSize` 之和即为待发送数据的总内存占用量。  
+因此，`pendingSize` 的计算应包含待发送数据的大小和其 `Entry` 实例对象的内存占用大小，这样才能准确计算出 `ChannelOutboundBuffer` 中待发送数据的内存占用总量。`ChannelOutboundBuffer` 中所有 `Entry` 实例中的 `pendingSize` 之和即为待发送数据的总内存占用量。
 
 ```java
 public final class ChannelOutboundBuffer {
@@ -559,18 +554,18 @@ public final class WriteBufferWaterMark {
 - **低水位线**：32 KB
   当内存占用量低于 32 KB 时，Channel 的状态会再次变为 **可写状态**。
 
-这种设计有效地管理了待发送数据的内存使用，确保在网络拥塞或负载过高的情况下，不会导致内存溢出（OOM）问题的发生。  
+这种设计有效地管理了待发送数据的内存使用，确保在网络拥塞或负载过高的情况下，不会导致内存溢出（OOM）问题的发生。
 
-#### Entry实例对象在 JVM 中占用内存大小
+#### Entry 实例对象在 JVM 中占用内存大小
 
-`pendingSize` 主要用于记录当前待发送数据的内存占用总量，以预警 OOM（Out of Memory）问题的发生。待发送数据的内存占用由以下两部分组成：  
+`pendingSize` 主要用于记录当前待发送数据的内存占用总量，以预警 OOM（Out of Memory）问题的发生。待发送数据的内存占用由以下两部分组成：
 
 - **待发送数据** `msg` **的内存占用大小**
 - `Entry` **对象本身在 JVM 中的内存占用**
 
-如何计算 `Entry` 对象的内存占用？  
+如何计算 `Entry` 对象的内存占用？
 
- 要理解 `Entry` 对象的内存占用，我们需要首先了解 Java 对象的内存布局相关知识。关于这方面的详细信息，笔者已在《一文聊透对象在JVM中的内存布局，以及内存对齐和压缩指针的原理及应用》一文中进行了阐述，感兴趣的同学可以参考这篇文章。以下是一些关于计算 Java 对象占用内存大小的关键信息：  
+要理解 `Entry` 对象的内存占用，我们需要首先了解 Java 对象的内存布局相关知识。关于这方面的详细信息，笔者已在《一文聊透对象在 JVM 中的内存布局，以及内存对齐和压缩指针的原理及应用》一文中进行了阐述，感兴趣的同学可以参考这篇文章。以下是一些关于计算 Java 对象占用内存大小的关键信息：
 
 普通 Java 对象的内存布局由以下三部分组成：
 
@@ -587,13 +582,13 @@ public final class WriteBufferWaterMark {
 
 在实例数据区中，对象字段之间的排列及内存对齐需遵循以下规则：
 
-1. **规则1**：如果一个字段占用 `X` 个字节，则该字段的偏移量 `OFFSET` 需对齐至 `NX`。
-2. **规则2**：在开启压缩指针的 64 位 JVM 中，Java 类中的第一个字段的 `OFFSET` 需对齐至 `4N`；在关闭压缩指针的情况下需对齐至 `8N`。
-3. **规则3**：JVM 默认分配字段的顺序为：`long/double`、`int/float`、`short/char`、`byte/boolean`、`oops`（Ordinary Object Pointer）。父类中定义的实例变量会出现在子类实例变量之前。当设置 JVM 参数 `-XX:+CompactFields` 时（默认），占用内存小于 `long/double` 的字段可以被插入到第一个 `long/double` 字段之前的间隙中，以避免不必要的内存填充。
+1. **规则 1**：如果一个字段占用 `X` 个字节，则该字段的偏移量 `OFFSET` 需对齐至 `NX`。
+2. **规则 2**：在开启压缩指针的 64 位 JVM 中，Java 类中的第一个字段的 `OFFSET` 需对齐至 `4N`；在关闭压缩指针的情况下需对齐至 `8N`。
+3. **规则 3**：JVM 默认分配字段的顺序为：`long/double`、`int/float`、`short/char`、`byte/boolean`、`oops`（Ordinary Object Pointer）。父类中定义的实例变量会出现在子类实例变量之前。当设置 JVM 参数 `-XX:+CompactFields` 时（默认），占用内存小于 `long/double` 的字段可以被插入到第一个 `long/double` 字段之前的间隙中，以避免不必要的内存填充。
 
 **内存对齐**：Java 虚拟机堆中对象的起始地址需对齐至 8 的倍数（可通过 JVM 参数 `-XX:ObjectAlignmentInBytes` 控制，默认为 8）。
 
- 在了解上述字段排列和内存对齐规则后，我们将分别分析在开启压缩指针和关闭压缩指针情况下的 `Entry` 对象内存布局，并计算其内存占用大小。  
+在了解上述字段排列和内存对齐规则后，我们将分别分析在开启压缩指针和关闭压缩指针情况下的 `Entry` 对象内存布局，并计算其内存占用大小。
 
 ```java
 static final class Entry {
@@ -625,7 +620,7 @@ static final class Entry {
 
 我们看到 Entry 对象中一共有 11 个实例字段，其中 2 个 long 型字段，2 个 int 型字段，1 个 boolean 型字段，6 个对象引用。
 
-默认情况下JVM参数 `-XX +CompactFields` 是开启的。
+默认情况下 JVM 参数 `-XX +CompactFields` 是开启的。
 
 **开启指针压缩 -XX:+UseCompressedOops**
 
@@ -633,11 +628,11 @@ static final class Entry {
 
 Entry 对象的内存布局中开头先是 8 个字节的 MarkWord，然后是 4 个字节的类型指针（开启压缩指针）。
 
-在实例数据区中对象的排列规则需要符合规则3，也就是字段之间的排列顺序需要遵循 `long > int > boolean > oop(对象引用)`。
+在实例数据区中对象的排列规则需要符合规则 3，也就是字段之间的排列顺序需要遵循 `long > int > boolean > oop(对象引用)`。
 
-根据规则 3 Entry对象实例数据区第一个字段应该是 long progress，但根据规则1 long 型字段的 OFFSET 需要对齐至 8 的倍数，并且根据 规则2 在开启压缩指针的情况下，对象的第一个字段 OFFSET 需要对齐至 4 的倍数。所以字段long progress 的 OFFET  = 16，这就必然导致了在对象头与字段 long progress 之间需要由 4 字节的字节填充（OFFET = 12处发生字节填充）。
+根据规则 3 Entry 对象实例数据区第一个字段应该是 long progress，但根据规则 1 long 型字段的 OFFSET 需要对齐至 8 的倍数，并且根据 规则 2 在开启压缩指针的情况下，对象的第一个字段 OFFSET 需要对齐至 4 的倍数。所以字段 long progress 的 OFFET = 16，这就必然导致了在对象头与字段 long progress 之间需要由 4 字节的字节填充（OFFET = 12 处发生字节填充）。
 
-但是 JVM 默认开启了 `-XX +CompactFields`，根据 规则3 占用内存小于 long / double 的字段会允许被插入到对象中第一个 long / double 字段之前的间隙中，以避免不必要的内存填充。
+但是 JVM 默认开启了 `-XX +CompactFields`，根据 规则 3 占用内存小于 long / double 的字段会允许被插入到对象中第一个 long / double 字段之前的间隙中，以避免不必要的内存填充。
 
 所以位于后边的字段 int pendingSize 插入到了 OFFET = 12 位置处，避免了不必要的字节填充。
 
@@ -645,9 +640,9 @@ Entry 对象的内存布局中开头先是 8 个字节的 MarkWord，然后是 4
 
 大家一定注意到 OFFSET = 37 处本应该存放的是字段 `private final Handle<Entry> handle` 但是却被填充了 3 个字节。这是为什么呢？
 
-根据字段重排列规则1：引用字段 `private final Handle<Entry> handle` 占用 4 个字节（开启压缩指针的情况），所以需要对齐至4的倍数。所以需要填充3个字节，使得引用字段 `private final Handle<Entry> handle` 位于 OFFSET = 40 处。
+根据字段重排列规则 1：引用字段 `private final Handle<Entry> handle` 占用 4 个字节（开启压缩指针的情况），所以需要对齐至 4 的倍数。所以需要填充 3 个字节，使得引用字段 `private final Handle<Entry> handle` 位于 OFFSET = 40 处。
 
-**根据以上这些规则最终计算出来在开启压缩指针的情况下Entry对象在堆中占用内存大小为64字节**
+**根据以上这些规则最终计算出来在开启压缩指针的情况下 Entry 对象在堆中占用内存大小为 64 字节**
 
 #### 关闭指针压缩 -XX:-UseCompressedOops
 
@@ -657,9 +652,9 @@ Entry 对象的内存布局中开头先是 8 个字节的 MarkWord，然后是 4
 
 首先 Entry 对象在内存布局中的开头依然是由 8 个字节的 MarkWord 还有 8 个字节的类型指针（关闭压缩指针）组成的对象头。
 
-我们看到在 OFFSET = 41 处发生了字节填充，原因是在关闭压缩指针的情况下，对象引用占用内存大小变为 8 个字节，根据规则1: 引用字段 `private final Handle<Entry> handle` 的 OFFET 需要对齐至 8 的倍数，所以需要在该引用字段之前填充 7 个字节，使得引用字段 `private final Handle<Entry> handle` 的OFFET = 48 。
+我们看到在 OFFSET = 41 处发生了字节填充，原因是在关闭压缩指针的情况下，对象引用占用内存大小变为 8 个字节，根据规则 1: 引用字段 `private final Handle<Entry> handle` 的 OFFET 需要对齐至 8 的倍数，所以需要在该引用字段之前填充 7 个字节，使得引用字段 `private final Handle<Entry> handle` 的 OFFET = 48 。
 
-**综合字段重排列的三个规则最终计算出来在关闭压缩指针的情况下Entry对象在堆中占用内存大小为96字节**
+**综合字段重排列的三个规则最终计算出来在关闭压缩指针的情况下 Entry 对象在堆中占用内存大小为 96 字节**
 
 #### 向 ChannelOutboundBuffer 中缓存待发送数据
 
@@ -683,7 +678,7 @@ public void addMessage(Object msg, int size, ChannelPromise promise) {
 }
 ```
 
-##### 创建Entry对象来封装待发送数据信息
+##### 创建 Entry 对象来封装待发送数据信息
 
 通过前面的介绍，我们了解到，当用户调用 `ctx.write(msg)` 之后，**write** 事件开始在 **pipeline** 中从当前 **ChannelHandler** 向前传播，最终在 **HeadContext** 中将待发送数据写入到对应的写缓冲区 **ChannelOutboundBuffer** 中。
 
@@ -709,7 +704,7 @@ static final class Entry {
     }
 
     //不考虑指针压缩的大小 entry对象在堆中占用的内存大小为96
-    //如果开启指针压缩，entry对象在堆中占用的内存大小 会是64  
+    //如果开启指针压缩，entry对象在堆中占用的内存大小 会是64
     static final int CHANNEL_OUTBOUND_BUFFER_ENTRY_OVERHEAD =
         SystemPropertyUtil.getInt("io.netty.transport.outboundBufferEntrySizeOverhead", 96);
 
@@ -736,11 +731,11 @@ static final class Entry {
 - 待发送网络数据大小
 - Entry 对象本身在内存中的占用量
 
-而在《3.3.4 Entry实例对象在JVM中占用内存大小》小节中我们介绍到，Entry 对象在内存中的占用大小在开启压缩指针的情况下（-XX:+UseCompressedOops）占用 64 字节，在关闭压缩指针的情况下（-XX:-UseCompressedOops）占用 96 字节。
+而在《3.3.4 Entry 实例对象在 JVM 中占用内存大小》小节中我们介绍到，Entry 对象在内存中的占用大小在开启压缩指针的情况下（-XX:+UseCompressedOops）占用 64 字节，在关闭压缩指针的情况下（-XX:-UseCompressedOops）占用 96 字节。
 
-字段 `CHANNEL_OUTBOUND_BUFFER_ENTRY_OVERHEAD ` 表示的就是 Entry 对象在内存中的占用大小，Netty这里默认是 96 字节，当然如果我们的应用程序开启了指针压缩，我们可以通过 JVM 启动参数 `-D io.netty.transport.outboundBufferEntrySizeOverhead` 指定为 64 字节。
+字段 `CHANNEL_OUTBOUND_BUFFER_ENTRY_OVERHEAD ` 表示的就是 Entry 对象在内存中的占用大小，Netty 这里默认是 96 字节，当然如果我们的应用程序开启了指针压缩，我们可以通过 JVM 启动参数 `-D io.netty.transport.outboundBufferEntrySizeOverhead` 指定为 64 字节。
 
-##### 将Entry对象添加进 ChannelOutboundBuffer 中
+##### 将 Entry 对象添加进 ChannelOutboundBuffer 中
 
 ```java
 if (tailEntry == null) {
@@ -796,7 +791,7 @@ public final class ChannelOutboundBuffer {
 }
 ```
 
-volatile 关键字在 Java 内存模型中只能保证变量的可见性，以及禁止指令重排序。但无法保证多线程更新的原子性，这里我们可以通过AtomicLongFieldUpdater 来帮助 totalPendingSize 字段实现原子性的更新。
+volatile 关键字在 Java 内存模型中只能保证变量的可见性，以及禁止指令重排序。但无法保证多线程更新的原子性，这里我们可以通过 AtomicLongFieldUpdater 来帮助 totalPendingSize 字段实现原子性的更新。
 
 ```java
 // 0表示channel可写，1表示channel不可写
@@ -822,7 +817,7 @@ private void setUnwritable(boolean invokeLater) {
 
 当 ChannelOutboundBuffer 中的内存占用水位线 totalPendingSize 已经超过高水位线时，调用该方法将当前 Channel 的状态设置为不可写状态。
 
-unwritable == 0 表示当前channel可写，unwritable == 1 表示当前channel不可写。
+unwritable == 0 表示当前 channel 可写，unwritable == 1 表示当前 channel 不可写。
 
 channel 可以通过调用 isWritable 方法来判断自身当前状态是否可写。
 
@@ -932,7 +927,7 @@ abstract class AbstractChannelHandlerContext implements ChannelHandlerContext, R
 
 如果当前线程不是 **ChannelHandler** 指定的 **executor**，则需要将 `invokeFlush()` 方法的调用封装成 **Task**，并交给指定的 **executor** 执行。
 
-#### 触发nextChannelHandler的flush方法回调
+#### 触发 nextChannelHandler 的 flush 方法回调
 
 ```java
 private void invokeFlush() {
@@ -960,7 +955,7 @@ private void invokeFlush0() {
 }
 ```
 
- 与 **write** 事件处理的不同之处在于，当调用 `nextChannelHandler` 的 **flush** 回调时，如果出现异常，会触发 `nextChannelHandler` 的 **exceptionCaught** 回调。  
+与 **write** 事件处理的不同之处在于，当调用 `nextChannelHandler` 的 **flush** 回调时，如果出现异常，会触发 `nextChannelHandler` 的 **exceptionCaught** 回调。
 
 ```java
 private void invokeExceptionCaught(final Throwable cause) {
@@ -982,7 +977,7 @@ private void invokeExceptionCaught(final Throwable cause) {
 
 而其他 outbound 类事件，比如 **write** 事件，在传播过程中发生异常时，只会回调通知相关的 **ChannelFuture**，并不会触发 **exceptionCaught** 事件的传播
 
-### flush事件的处理
+### flush 事件的处理
 
 <img src="https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410311742560.png?x-oss-process=image/watermark,image_aW1nL3dhdGVyLnBuZw==,g_nw,x_1,y_1" alt="image-20241031174210480" style="zoom:50%;" />
 
@@ -998,8 +993,6 @@ final class HeadContext extends AbstractChannelHandlerContext {
 
 }
 ```
-
-
 
 下面就真正到了 Netty 处理 flush 事件的地方。
 
@@ -1066,11 +1059,11 @@ public interface Promise<V> extends Future<V> {
 
    /**
      * 设置当前future为不可取消状态
-     * 
+     *
      * 返回true的情况：
      * 1：成功的将future设置为uncancellable
      * 2：当future已经成功完成
-     * 
+     *
      * 返回false的情况：
      * 1：future已经被取消，则不能在设置 uncancellable 状态
      *
@@ -1159,7 +1152,7 @@ flush0 方法这里主要做的事情就是检查当 channel 的状态是否正�
 protected abstract class AbstractUnsafe implements Unsafe {
 
     //是否正在进行 flush 操作
-    private boolean inFlush0; 
+    private boolean inFlush0;
 
     protected void flush0() {
         if (inFlush0) {
@@ -1168,7 +1161,7 @@ protected abstract class AbstractUnsafe implements Unsafe {
         }
 
         final ChannelOutboundBuffer outboundBuffer = this.outboundBuffer;
-        
+
         //channel 已经关闭或者 outboundBuffer 为空
         if (outboundBuffer == null || outboundBuffer.isEmpty()) {
             return;
@@ -1207,7 +1200,7 @@ protected abstract class AbstractUnsafe implements Unsafe {
 ```
 
 - `outboundBuffer == null || outboundBuffer.isEmpty() ` ：如果 channel 已经关闭了或者对应写缓冲区中没有任何数据，那么就停止发送流程，直接 return。
-- `!isActive()` ：如果当前channel处于非活跃状态，则需要调用 `outboundBuffer#failFlushed` 通知 ChannelOutboundBuffer 中所有待发送操作对应的 channelPromise 向用户线程报告发送失败。并将待发送数据 Entry 对象从 ChannelOutboundBuffer 中删除，并释放待发送数据空间，回收 Entry 对象实例。
+- `!isActive()` ：如果当前 channel 处于非活跃状态，则需要调用 `outboundBuffer#failFlushed` 通知 ChannelOutboundBuffer 中所有待发送操作对应的 channelPromise 向用户线程报告发送失败。并将待发送数据 Entry 对象从 ChannelOutboundBuffer 中删除，并释放待发送数据空间，回收 Entry 对象实例。
 
 还记得我们在[《处理 OP_ACCEPT 事件》](/netty_source_code_parsing/main_task/event_scheduling_layer/io/OP_ACCEPT)一文中提到过的 NioSocketChannel 的 active 状态有哪些条件吗？？
 
@@ -1254,7 +1247,7 @@ public final class ChannelOutboundBuffer {
 }
 ```
 
-该方法用于在 Netty 在发送数据的时候，如果发现当前 channel 处于非活跃状态，则将 ChannelOutboundBuffer 中 flushedEntry 与tailEntry 之间的 Entry 对象节点全部删除，并释放发送数据占用的内存空间，同时回收 Entry 对象实例。
+该方法用于在 Netty 在发送数据的时候，如果发现当前 channel 处于非活跃状态，则将 ChannelOutboundBuffer 中 flushedEntry 与 tailEntry 之间的 Entry 对象节点全部删除，并释放发送数据占用的内存空间，同时回收 Entry 对象实例。
 
 ##### ChannelOutboundBuffer#remove0
 
@@ -1313,7 +1306,7 @@ protected void doWrite(ChannelOutboundBuffer in) throws Exception {
     do {
         if (in.isEmpty()) {
             // 如果全部数据已经写完 则移除OP_WRITE事件并直接退出writeLoop
-            clearOpWrite();             
+            clearOpWrite();
             return;
         }
 
@@ -1328,7 +1321,7 @@ protected void doWrite(ChannelOutboundBuffer in) throws Exception {
             .........向底层jdk nio socketChannel发送数据.........
         }
     } while (writeSpinCount > 0);
-    
+
     ............处理本轮write loop未写完的情况.......
 }
 ```
@@ -1360,7 +1353,7 @@ ServerBootstrap b = new ServerBootstrap();
 private final class NioSocketChannelConfig extends DefaultSocketChannelConfig {
     //293976 = 146988 << 1
     //SO_SNDBUF设置的发送缓冲区大小 * 2 作为 最大写入字节数
-    //最小值为2048 
+    //最小值为2048
     private volatile int maxBytesPerGatheringWrite = Integer.MAX_VALUE;
     private NioSocketChannelConfig(NioSocketChannel channel, Socket javaSocket) {
         super(channel, javaSocket);
@@ -1406,7 +1399,7 @@ ServerBootstrap b = new ServerBootstrap();
 
 ```java
 @Override
-protected void doWrite(ChannelOutboundBuffer in) throws Exception {      
+protected void doWrite(ChannelOutboundBuffer in) throws Exception {
     SocketChannel ch = javaChannel();
     int writeSpinCount = config().getWriteSpinCount();
     do {
@@ -1418,7 +1411,7 @@ protected void doWrite(ChannelOutboundBuffer in) throws Exception {
 
         switch (nioBufferCnt) {
             case 0:
-                //这里主要是针对 网络传输文件数据 的处理 FileRegion                 
+                //这里主要是针对 网络传输文件数据 的处理 FileRegion
                 writeSpinCount -= doWrite0(in);
                 break;
             case 1: {
@@ -1428,10 +1421,10 @@ protected void doWrite(ChannelOutboundBuffer in) throws Exception {
             default: {
                 .........批量处理多个NioByteBuffers发送的情况......
                 break;
-            }            
+            }
         }
     } while (writeSpinCount > 0);
-    
+
     ............处理本轮write loop未写完的情况.......
 }
 ```
@@ -1509,7 +1502,7 @@ public class NioSocketChannel extends AbstractNioByteChannel implements io.netty
 
 ```java
 case 0:
-    //这里主要是针对 网络传输文件数据 的处理 FileRegion                 
+    //这里主要是针对 网络传输文件数据 的处理 FileRegion
     writeSpinCount -= doWrite0(in);
     break;
 ```
@@ -1532,7 +1525,7 @@ case 0:
 
 ```java
 @Override
-protected void doWrite(ChannelOutboundBuffer in) throws Exception {      
+protected void doWrite(ChannelOutboundBuffer in) throws Exception {
     SocketChannel ch = javaChannel();
     int writeSpinCount = config().getWriteSpinCount();
     do {
@@ -1580,10 +1573,10 @@ protected void doWrite(ChannelOutboundBuffer in) throws Exception {
                 in.removeBytes(localWrittenBytes);
                 --writeSpinCount;
                 break;
-            }            
+            }
         }
     } while (writeSpinCount > 0);
-    
+
     ............处理本轮write loop未写完的情况.......
 }
 ```
@@ -1639,7 +1632,7 @@ protected final void setOpWrite() {
 关于通过位运算来向 IO 事件集合 interestOps 添加监听 IO 事件的用法，在前边的文章中，笔者已经多次介绍过了，这里不再重复。
 
 4. **调整下次写入字节数**
-   根据本次写循环向 Socket 写缓冲区写入数据的情况，调整下次写循环的最大写入字节数。`maxBytesPerGatheringWrite` 决定每次写循环可以从 `channelOutboundBuffer` 中最多获取多少发送数据。其初始值为 `SO_SNDBUF` 大小的两倍，即 `293976 = 146988 << 1`，最小值为 `2048`。  
+   根据本次写循环向 Socket 写缓冲区写入数据的情况，调整下次写循环的最大写入字节数。`maxBytesPerGatheringWrite` 决定每次写循环可以从 `channelOutboundBuffer` 中最多获取多少发送数据。其初始值为 `SO_SNDBUF` 大小的两倍，即 `293976 = 146988 << 1`，最小值为 `2048`。
 
 ```java
 public static final int MAX_BYTES_PER_GATHERING_WRITE_ATTEMPTED_LOW_THRESHOLD = 4096;
@@ -1672,7 +1665,7 @@ private void adjustMaxBytesPerGatheringWrite(int attempted, int written, int old
 - **减少下次写入量**
   如果本次写入的数据量不足尝试写入数据的 `1/2`，即 `written < attempted >>> 1`，则表明当前 Socket 写缓冲区的可写容量已接近上限。此时，下次写循环应减少写入量，将下次写入的数据量减小为 `attempted` 的 `1/2`。不过，减少的量不能无限制下降，最小值不得低于 `2048`。
 
-这里可以结合笔者的文章 [ByteBuf]() 中介绍到的 `read loop` 场景中的扩缩容一起对比着看。
+这里可以结合笔者的文章 ByteBuf 中介绍到的 `read loop` 场景中的扩缩容一起对比着看。
 
 `read loop` 中的扩缩容触发时机是在一个完整的 `read loop` 结束时触发。而 `write loop` 中扩缩容的触发时机是在每次 `write loop` 发送完数据后，立即触发扩缩容判断。
 
@@ -1681,9 +1674,9 @@ private void adjustMaxBytesPerGatheringWrite(int attempted, int written, int old
 
 到这里，`write loop` 中的数据发送逻辑已介绍完毕。接下来，Netty 会在 `write loop` 中循环发送数据，直到满足以下条件之一：
 
-* 写满 `16 次`。
+- 写满 `16 次`。
 
-* 数据发送完毕。
+- 数据发送完毕。
 
 还有一种退出 `write loop` 的情况是，当 Socket 中的写缓冲区已满，无法继续写入数据。此时，Netty 将退出 `write loop` 并向 Reactor 注册 `OP_WRITE` 事件。
 
@@ -1697,7 +1690,7 @@ private void adjustMaxBytesPerGatheringWrite(int attempted, int written, int old
 
 ```java
 @Override
-protected void doWrite(ChannelOutboundBuffer in) throws Exception {      
+protected void doWrite(ChannelOutboundBuffer in) throws Exception {
     SocketChannel ch = javaChannel();
     int writeSpinCount = config().getWriteSpinCount();
     do {
@@ -1708,7 +1701,7 @@ protected void doWrite(ChannelOutboundBuffer in) throws Exception {
 
         switch (nioBufferCnt) {
             case 0:
-                //这里主要是针对 网络传输文件数据 的处理 FileRegion                 
+                //这里主要是针对 网络传输文件数据 的处理 FileRegion
                 writeSpinCount -= doWrite0(in);
                 break;
             case 1: {
@@ -1716,10 +1709,10 @@ protected void doWrite(ChannelOutboundBuffer in) throws Exception {
             }
             default: {
                   .....批量发送多个nioBuffers......
-            }            
+            }
         }
     } while (writeSpinCount > 0);
-    
+
     //处理write loop结束 但数据还没写完的情况
     incompleteWrite(writeSpinCount < 0);
 }
@@ -1748,7 +1741,7 @@ protected final void incompleteWrite(boolean setOpWrite) {
 
 尽管此时 Socket 仍可以继续写入，Netty 也不会再继续写入。这是因为执行 `flush` 操作的是 Reactor 线程，而 Reactor 线程负责执行注册在其上的所有 Channel 的 IO 操作。Netty 不允许 Reactor 线程长时间在一个 Channel 上执行 IO 操作，而是需要将执行时间均匀地分配到每个 Channel 上。因此，在这种情况下，Netty 会停止当前的写入操作，转而处理其他 Channel 上的 IO 事件。
 
-**那么还没写完的数据，Netty会如何处理呢**？
+**那么还没写完的数据，Netty 会如何处理呢**？
 
 ```java
 protected final void incompleteWrite(boolean setOpWrite) {
@@ -1762,13 +1755,13 @@ protected final void incompleteWrite(boolean setOpWrite) {
 
         //因为此时socket是可写的，必须清除op_write事件，否则会一直不停地被通知
         clearOpWrite();
-        //如果本次writeLoop还没写完，则提交flushTask到reactor           
+        //如果本次writeLoop还没写完，则提交flushTask到reactor
         eventLoop().execute(flushTask);
 
     }
 ```
 
-这个方法的 `if` 分支逻辑，在介绍 `do {.....} while()` 循环体的 `write loop` 发送逻辑时，我们提到过：在 `write loop` 循环发送数据的过程中，如果发现 Socket 缓冲区已满，无法继续写入数据（即 `localWrittenBytes <= 0`），则需要向 Reactor 注册 `OP_WRITE` 事件。等到 Socket 缓冲区变为可写状态时，`epoll` 会通知 Reactor 线程继续写入剩下的数据。  
+这个方法的 `if` 分支逻辑，在介绍 `do {.....} while()` 循环体的 `write loop` 发送逻辑时，我们提到过：在 `write loop` 循环发送数据的过程中，如果发现 Socket 缓冲区已满，无法继续写入数据（即 `localWrittenBytes <= 0`），则需要向 Reactor 注册 `OP_WRITE` 事件。等到 Socket 缓冲区变为可写状态时，`epoll` 会通知 Reactor 线程继续写入剩下的数据。
 
 ```java
 do {
@@ -1839,7 +1832,7 @@ protected final void incompleteWrite(boolean setOpWrite) {
     if (setOpWrite) {
         ......省略......
     } else {
-        clearOpWrite();  
+        clearOpWrite();
         eventLoop().execute(flushTask);
     }
 ```
@@ -1868,7 +1861,7 @@ public final class NioEventLoop extends SingleThreadEventLoop {
             if ((readyOps & SelectionKey.OP_WRITE) != 0) {
                 ch.unsafe().forceFlush();
             }
- 
+
             if ((readyOps & (SelectionKey.OP_READ | SelectionKey.OP_ACCEPT)) != 0 || readyOps == 0) {
                ........处理accept和read事件.........
             }
@@ -1894,7 +1887,7 @@ public final void forceFlush() {
 
 ```java
 @Override
-protected void doWrite(ChannelOutboundBuffer in) throws Exception {      
+protected void doWrite(ChannelOutboundBuffer in) throws Exception {
     SocketChannel ch = javaChannel();
     int writeSpinCount = config().getWriteSpinCount();
     do {
@@ -1914,10 +1907,10 @@ protected void doWrite(ChannelOutboundBuffer in) throws Exception {
             }
             default: {
                   .....批量发送多个nioBuffers......
-            }            
+            }
         }
     } while (writeSpinCount > 0);
-    
+
     //处理write loop结束 但数据还没写完的情况
     incompleteWrite(writeSpinCount < 0);
 }
@@ -2106,11 +2099,11 @@ private void invokeFlush0() {
 
   - 在一个完整的 **read loop** 中，如果还未读取完数据，直接退出。等到 **Reactor** 线程执行完其他 **Channel** 上的 IO 事件后再读取未读完的数据。
 
-  - 而在一个完整的 
+  - 而在一个完整的
 
     write loop
 
-     中，数据发送不完则分为两种情况：
+    中，数据发送不完则分为两种情况：
 
     - **Socket** 缓冲区满，无法继续写入。这时需要向 **Reactor** 注册 **OP_WRITE** 事件。等 **Socket** 缓冲区变得可写时，`epoll` 通知 **Reactor** 线程继续发送。
     - **Socket** 缓冲区可写，但由于发送数据太多，导致虽然写满 16 次仍未写完。这时直接向 **Reactor** 丢一个 **flushTask**，等到 **Reactor** 线程执行完其他 **Channel** 上的 IO 事件后，再执行 **flushTask**。

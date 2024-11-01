@@ -283,7 +283,7 @@ selectionKey().interestOps(SelectionKey.OP_CONNECT);
 
 ::: warning
 
-如果不清楚 `OP_CONNECT` 事件是在 TCP 三次握手中的哪个阶段产生的，请参阅 [《Socket 网络编程》]()。
+如果不清楚 `OP_CONNECT` 事件是在 TCP 三次握手中的哪个阶段产生的，请参阅[《Socket 网络编程》](/netty_source_code_parsing/main_task/network_communication_layer/socket_network_programming)。
 
 :::
 

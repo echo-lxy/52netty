@@ -2,17 +2,15 @@
 
 ## 前言
 
-在完成了 [《网络通信层 》](/netty_source_code_parsing/main_task/network_communication_layer/socket_network_programming)的学习之后，我们终于可以正式开始 Netty 的源码学习了！  
+在完成了 [《网络通信层 》](/netty_source_code_parsing/main_task/network_communication_layer/socket_network_programming)的学习之后，我们终于可以正式开始 Netty 的源码学习了！
 
 先来引出 Netty 中使用的 **主从 Reactor IO 线程模型**
 
 ![image-20241031153016594](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410311530775.png?x-oss-process=image/watermark,image_aW1nL3dhdGVyLnBuZw==,g_nw,x_1,y_1)
 
-它在实现上又与 **Doug Lea** 在 [Scalable IO in Java](https://gee.cs.oswego.edu/dl/cpjslides/nio.pdf) 论文中提到的经典 **主从Reactor多线程模型** 有所差异
+它在实现上又与 **Doug Lea** 在 [Scalable IO in Java](https://gee.cs.oswego.edu/dl/cpjslides/nio.pdf) 论文中提到的经典 **主从 Reactor 多线程模型** 有所差异
 
 <img src="https://echo798.oss-cn-shenzhen.aliyuncs.com/img/image-20241029194601543.png" alt="image-20241029194601543" style="zoom:50%;" />
-
-
 
 ## Netty 中的 Main Sub Reactor Group 模型
 
@@ -111,7 +109,7 @@ EventLoopGroup bossGroup = new NioEventLoopGroup(1);
 EventLoopGroup workerGroup = new NioEventLoopGroup();
 ```
 
-------
+---
 
 在 Netty 中，Reactor 线程组的实现类为 `NioEventLoopGroup`。在创建 `bossGroup` 和 `workerGroup` 时，通常会用到 `NioEventLoopGroup` 的两个构造函数：
 
@@ -133,7 +131,7 @@ public NioEventLoopGroup()
 
 ```java
 public class NioEventLoopGroup extends MultithreadEventLoopGroup {
-    
+
     public NioEventLoopGroup() {
         this(0);
     }
@@ -164,7 +162,7 @@ public NioEventLoopGroup(int nThreads, Executor executor, final SelectorProvider
 - **SelectorProvider selectorProvider**：Reactor 中的 IO 模型是 IO 多路复用模型，在 JDK NIO 中对应实现为 `java.nio.channels.Selector`（即上篇文章提到的 select、poll、epoll）。每个 Reactor 包含一个 Selector，用于轮询注册在该 Reactor 上的所有 Channel 的 IO 事件。`SelectorProvider` 用于创建 Selector。
 - **SelectStrategyFactory selectStrategyFactory**：Reactor 的核心任务是轮询注册在其上的 Channel 的 IO 就绪事件，`SelectStrategyFactory` 用于指定轮询策略，默认策略为 `DefaultSelectStrategyFactory.INSTANCE`。
 
-最终，这些参数将传递给 `NioEventLoopGroup` 的父类构造器。接下来，我们来看看 `NioEventLoopGroup` 类的继承结构：  
+最终，这些参数将传递给 `NioEventLoopGroup` 的父类构造器。接下来，我们来看看 `NioEventLoopGroup` 类的继承结构：
 
 ![image-20241031153130559](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410311531612.png)
 
@@ -238,7 +236,7 @@ Reactor 线程组 `NioEventLoopGroup` 包含多个 Reactor，这些 Reactor 存�
 protected abstract EventExecutor newChild(Executor executor, Object... args) throws Exception;
 ```
 
- 这里我们解析的是 `NioEventLoopGroup`，我们来看一下 `newChild` 在该类中的实现：  
+这里我们解析的是 `NioEventLoopGroup`，我们来看一下 `newChild` 在该类中的实现：
 
 ![img](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/1730001885437-1e25f276-58d0-4f22-8ca3-06ceec5b5b71.png)
 
@@ -254,10 +252,10 @@ protected abstract EventExecutor newChild(Executor executor, Object... args) thr
 
 ```java
 public final class NioEventLoop extends SingleThreadEventLoop {
-    
+
     //用于创建JDK NIO Selector,ServerSocketChannel
     private final SelectorProvider provider;
-    
+
     //Selector轮询策略 决定什么时候轮询，什么时候处理IO事件，什么时候执行异步任务
     private final SelectStrategy selectStrategy;
     /**
@@ -282,7 +280,7 @@ public final class NioEventLoop extends SingleThreadEventLoop {
 
 这里就正式开始了 Reactor 的创建过程。我们知道，Reactor 的核心是采用 IO 多路复用模型来对客户端连接上的 IO 事件进行监听，因此最重要的任务是创建 Selector（JDK NIO 中 IO 多路复用技术的实现）。
 
-可以将 Selector 理解为我们在 [《IO 多路复用》]() 中介绍的 `select`、`poll`、`epoll`。它是 JDK NIO 对操作系统内核提供的这些 IO 多路复用技术的封装。
+可以将 Selector 理解为我们在 [《IO 多路复用》](/netty_source_code_parsing/main_task/network_communication_layer/io_multiplexing) 中介绍的 `select`、`poll`、`epoll`。它是 JDK NIO 对操作系统内核提供的这些 IO 多路复用技术的封装。
 
 ##### openSelector()
 
@@ -316,7 +314,7 @@ public NioEventLoopGroup(ThreadFactory threadFactory) {
 }
 ```
 
-`SelectorProvider` 在前面介绍的 `NioEventLoopGroup` 类构造函数中通过调用 `SelectorProvider.provider()` 被加载，并在 `NioEventLoopGroup#newChild` 方法中的可变长参数 `Object... args` 传递到 `NioEventLoop` 中的 `private final SelectorProvider provider` 字段中。  
+`SelectorProvider` 在前面介绍的 `NioEventLoopGroup` 类构造函数中通过调用 `SelectorProvider.provider()` 被加载，并在 `NioEventLoopGroup#newChild` 方法中的可变长参数 `Object... args` 传递到 `NioEventLoop` 中的 `private final SelectorProvider provider` 字段中。
 
 ![img](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/1730002340847-d9863943-a60e-488b-9432-c1e20e74e9de.png)
 
@@ -334,7 +332,7 @@ private static boolean loadProviderFromProperty() {
                                    ClassLoader.getSystemClassLoader());
         provider = (SelectorProvider)c.newInstance();
         return true;
-    } 
+    }
     .................省略.............
 }
 ```
@@ -424,7 +422,7 @@ private static Queue<Runnable> newTaskQueue0(int maxPendingTasks) {
     // This event loop never calls takeTask()
     return maxPendingTasks == Integer.MAX_VALUE ? PlatformDependent.<Runnable>newMpscQueue()
             : PlatformDependent.<Runnable>newMpscQueue(maxPendingTasks);
-} 
+}
 ```
 
 - 在 `NioEventLoop` 的父类 `SingleThreadEventLoop` 中，提供了一个静态变量 `DEFAULT_MAX_PENDING_TASKS` 用于指定 Reactor 任务队列的大小。可以通过系统变量 `-D io.netty.eventLoop.maxPendingTasks` 进行设置，默认为 `Integer.MAX_VALUE`，这表示任务队列默认为无界队列。
@@ -466,14 +464,14 @@ Reactor 内的异步任务队列类型为 `MpscQueue`，这是由 JCTools 提供
 public abstract class MultithreadEventExecutorGroup extends AbstractEventExecutorGroup {
    //从Reactor集合中选择一个特定的Reactor的绑定策略 用于channel注册绑定到一个固定的Reactor上
     private final EventExecutorChooserFactory.EventExecutorChooser chooser;
-    
+
     protected MultithreadEventExecutorGroup(int nThreads, Executor executor,
                                             EventExecutorChooserFactory chooserFactory, Object... args) {
         。。。
         chooser = chooserFactory.newChooser(children);
         。。。
     }
-    
+
 }
 ```
 
@@ -490,8 +488,6 @@ Netty 的绑定策略采用了 **round-robin** 轮询的方式来依次选择 Re
 如果 Reactor 的个数 `reactor.length` 恰好是 2 的次幂，那么我们可以用位操作 `&` 运算 `round & (reactor.length - 1)` 来代替 `%` 运算 `round % reactor.length`，因为位运算的性能更高。具体而言，为什么 `&` 运算能够代替 `%` 运算，笔者将在后面讲述时间轮时为大家详细证明。此处大家只需记住这个公式，接下来我们聚焦于本文的主线。
 
 了解了优化原理后，查看代码实现将变得更加容易理解。
-
-
 
 **利用`%`运算的方式来进行绑定**
 
@@ -538,9 +534,9 @@ for (EventExecutor e: children) {
 }
 ```
 
-------
+---
 
-我们在回到文章开头给出的 Netty服务端代码模板
+我们在回到文章开头给出的 Netty 服务端代码模板
 
 ```java
 public final class EchoServer {
@@ -557,9 +553,7 @@ public final class EchoServer {
 }
 ```
 
-
-
-现在Netty的`主从Reactor线程组`就已经创建完毕，此时Netty服务端的骨架已经搭建完毕，骨架如下：
+现在 Netty 的`主从Reactor线程组`就已经创建完毕，此时 Netty 服务端的骨架已经搭建完毕，骨架如下：
 
 <img src="https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410311534277.png?x-oss-process=image/watermark,image_aW1nL3dhdGVyLnBuZw==,b_nw,x_1,y_1" alt="image-20241031153401184" style="zoom:33%;" />
 

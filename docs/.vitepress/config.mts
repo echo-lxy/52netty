@@ -31,7 +31,7 @@ export default defineConfig({
     },
     footer: {
       message: "基于 MIT 许可发布",
-      copyright: `版权所有 © 2023-${new Date().getFullYear()} 李新洋`,
+      copyright: `版权所有 © 2023-${new Date().getFullYear()} 52Netty`,
     },
 
     docFooter: {
@@ -106,6 +106,40 @@ export default defineConfig({
                 text: "IO 线程模型",
                 link: "/network_program/io_thread_model.md",
               },
+              {
+                text: "JDK NIO 系列教程",
+                items: [
+                  {
+                    text: "Buffer 源码分析",
+                    link: "/network_program/nio/Buffer.md",
+                  },
+                  {
+                    text: "Channel 源码分析",
+                    link: "/network_program/nio/Channel.md",
+                  },
+                  {
+                    text: "SocketChannel 源码分析",
+                    link: "/network_program/nio/SocketChannel.md",
+                  },
+                  {
+                    text: "FileChannel 源码分析",
+                    link: "/network_program/nio/FileChannel.md",
+                  },
+                  {
+                    text: "Selector 源码分析",
+                    link: "/network_program/nio/Selector.md",
+                  },
+                  {
+                    text: "WindowsSelectorImpl 源码分析",
+                    link: "/network_program/nio/WindowsSelectorImpl.md",
+                  },
+                  ,
+                  {
+                    text: "EPollSelectorProvider 源码分析",
+                    link: "/network_program/nio/EPollSelectorProvider.md",
+                  },
+                ],
+              },
             ],
           },
           {
@@ -114,12 +148,7 @@ export default defineConfig({
             items: [
               {
                 text: "网络通信层",
-                items: [
-                  {
-                    text: "JDK NIO 详解",
-                    link: "/main_task/network_communication_layer/jdk_nio",
-                  },
-                ],
+                items: [],
               },
               {
                 text: "启动引导层",

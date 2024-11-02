@@ -212,7 +212,7 @@ int connect(int sockfd, const struct sockaddr *addr, socklen_t addrlen);
 5. 服务器收到 **ACK** 确认包后，就进入了最后的 **CLOSE** 状态。
 6. 客户端经过 **2MSL** 时间之后，也进入 **CLOSE** 状态。
 
-### 读写数据
+## 深入 `read`&`write`
 
 ![image-20241102001726163](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202411020017295.png)
 

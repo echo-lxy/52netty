@@ -27,7 +27,7 @@ export default defineConfig({
     },
     outline: {
       label: "页面导航",
-      level: [2, 3],
+      level: [2, 4],
     },
     footer: {
       message: "基于 MIT 许可发布",

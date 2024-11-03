@@ -154,8 +154,8 @@ export default defineConfig({
                     link: "/nio/WindowsSelectorImpl.md",
                   },
                   {
-                    text: "EPollSelectorProvider 源码分析",
-                    link: "/nio/EPollSelectorProvider.md",
+                    text: "EPollSelectorImpl 源码分析",
+                    link: "/nio/EPollSelectorImpl.md",
                   },
                 ],
               },

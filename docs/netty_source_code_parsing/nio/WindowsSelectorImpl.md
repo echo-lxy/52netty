@@ -33,12 +33,13 @@ public class WindowsSelectorProvider extends SelectorProviderImpl {
 | ------------------------------- | ------------------------------------------------------------ |
 | SelectionKeyImpl[] channelArray | 存放注册的SelectionKey                                       |
 | PollArrayWrapper pollWrapper    | 底层的本机轮询数组包装对象，用于存放Socket文件描述符和事件掩码 |
-| List<SelectThread> threads      | 辅助线程，多个线程有助于提高高并发时的性能                   |
+| List\<SelectThread\> threads    | 辅助线程，多个线程有助于提高高并发时的性能                   |
 | Pipe wakeupPipe                 | 用于唤醒辅助线程                                             |
 | FdMap fdMap                     | 保存文件描述符和SelectionKey的映射关系                       |
 | SubSelector subSelector         | 调用JNI的poll和处理就绪的SelectionKey                        |
 | StartLock startLock             | 新增的辅助线程使用该锁等待主线程的开始信号                   |
 | FinishLock finishLock           | 主线程用该锁等待所有辅助线程执行完毕                         |
+|                                 |                                                              |
 
 ### SelectionKeyImpl
 

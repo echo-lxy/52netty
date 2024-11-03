@@ -2,7 +2,7 @@
 
 ## ServerSocketChannelImpl
 
-<img src="https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202411022238923.png" alt="image-20241102223824733" style="zoom: 25%;" />
+<img src="https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202411022238923.png" alt="image-20241102223824733" style="zoom: 33%;" />
 
 ### 创建 ServerSocketChannel
 
@@ -120,7 +120,7 @@ class ServerSocketChannelImpl extends ServerSocketChannel implements SelChImpl
 }
 ```
 
-> 文件描述符简称fd，它是一个抽象概念，在C库编程中可以叫做文件流或文件流指针，在其它语言中也可以叫做文件句柄（handler），而且这些不同名词的隐含意义可能是不完全相同的。不过在系统层，我们统一把它叫做文件描述符。
+> 文件描述符简称 fd，它是一个抽象概念，在C库编程中可以叫做文件流或文件流指针，在其它语言中也可以叫做文件句柄（handler），而且这些不同名词的隐含意义可能是不完全相同的。不过在系统层，我们统一把它叫做文件描述符。
 
 ### 绑定和监听
 
@@ -204,7 +204,6 @@ public final class NetHooks {
 实际调用了SdpProvider的方法
 
 ```java
- 
 provider.implBeforeTcpBind(fdObj, address, port);
 public void implBeforeTcpBind(FileDescriptor fdObj, InetAddress address, int port) throws IOException
 {
@@ -320,12 +319,12 @@ public SocketChannel accept() throws IOException {
         if (!isBound())
             throw new NotYetBoundException();
         SocketChannel sc = null;
- 
+
         int n = 0;
         //创建文件描述符和接收到的客户端socket进行绑定
         FileDescriptor newfd = new FileDescriptor();
         InetSocketAddress[] isaa = new InetSocketAddress[1];
- 
+
         try {
             //I/O开始前调用begin
             begin();
@@ -360,14 +359,14 @@ public SocketChannel accept() throws IOException {
         if (sm != null) {
             try {
                 sm.checkAccept(isa.getAddress().getHostAddress(),
-                                isa.getPort());
+                               isa.getPort());
             } catch (SecurityException x) {
                 sc.close();
                 throw x;
             }
         }
         return sc;
- 
+
     }
 ```
 

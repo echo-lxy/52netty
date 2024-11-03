@@ -106,36 +106,56 @@ export default defineConfig({
                 text: "IO 线程模型",
                 link: "/network_program/io_thread_model.md",
               },
+            ],
+          },
+          {
+            text: "番外：JDK NIO 系列教程",
+            collapsed: true,
+            items: [
               {
-                text: "JDK NIO 系列教程",
+                text: "Buffer",
                 items: [
                   {
                     text: "Buffer 源码分析",
-                    link: "/network_program/nio/Buffer.md",
+                    link: "/nio/Buffer.md",
                   },
                   {
+                    text: "DirectByteBuffer&MappedByteBuffer 源码分析",
+                    link: "/nio/DirectByteBuffer.md",
+                  },
+                ],
+              },
+              {
+                text: "Channel",
+                items: [
+                  {
                     text: "Channel 源码分析",
-                    link: "/network_program/nio/Channel.md",
+                    link: "/nio/Channel.md",
                   },
                   {
                     text: "SocketChannel 源码分析",
-                    link: "/network_program/nio/SocketChannel.md",
+                    link: "/nio/SocketChannel.md",
                   },
                   {
                     text: "FileChannel 源码分析",
-                    link: "/network_program/nio/FileChannel.md",
+                    link: "/nio/FileChannel.md",
                   },
+                ],
+              },
+              {
+                text: "Selector",
+                items: [
                   {
                     text: "Selector 源码分析",
-                    link: "/network_program/nio/Selector.md",
+                    link: "/nio/Selector.md",
                   },
                   {
                     text: "WindowsSelectorImpl 源码分析",
-                    link: "/network_program/nio/WindowsSelectorImpl.md",
+                    link: "/nio/WindowsSelectorImpl.md",
                   },
                   {
                     text: "EPollSelectorProvider 源码分析",
-                    link: "/network_program/nio/EPollSelectorProvider.md",
+                    link: "/nio/EPollSelectorProvider.md",
                   },
                 ],
               },

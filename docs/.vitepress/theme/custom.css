@@ -27,3 +27,7 @@
 }
 
 
+.content strong{
+  color: #4b5cc4;
+  padding: 0 3px; /* 增加左右间距 */
+}

@@ -4,7 +4,7 @@
 
 **从 JVM 内存区域布局来看**，Netty 的 ByteBuf 主要分为 HeapByteBuf（堆内存）和 DirectByteBuf（堆外内存）两种类型。
 
-**从内存管理的角度来看**，ByteBuf 分为 PooledByteBuf（池化）和 UnpooledByteBuf（非池化）两种子类型。PooledByteBuf 由内存池统一管理，减少了频繁分配和释放的开销；而 UnpooledByteBuf 则是在需要时临时创建，使用后立即释放。
+**从内存管理的角度来看**，ByteBuf 分为 PooledByteBuf（池化）和 UnpooledByteBuf（非池化）两种子类型。PooledByteBuf 由内存池统一管理，减少了频繁分配和释放的开销；而 UnpaooledByteBuf 则是在需要时临时创建，使用后立即释放。
 
 **从内存访问的角度**，Netty 将 ByteBuf 分为 UnsafeByteBuf 和普通的 ByteBuf。UnsafeByteBuf 依赖 `Unsafe` 类提供的底层 API 来直接操作内存地址，而普通 ByteBuf 的内存操作则基于 NIO 中的 `ByteBuffer`，更加安全。
 

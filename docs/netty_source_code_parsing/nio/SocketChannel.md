@@ -378,7 +378,7 @@ public SocketChannel accept() throws IOException {
 
 ### SocketChannel生命周期
 
-![image-20241102225321646](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202411022253740.png)
+<img src="https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202411022253740.png" alt="image-20241102225321646" style="zoom: 33%;" />
 
 - SocketChannel会有一个state标记当前的状态，默认为-1表示ST_UNINITIALIZED(未初始化)
 - 在构造函数最后会将state更新为0(ST_UNCONNECTED,未连接)

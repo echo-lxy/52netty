@@ -97,3 +97,4 @@
 - [netty - 文集 - 简书](https://www.jianshu.com/nb/41207414)
 - [主页 | 二哥的Java进阶之路](https://javabetter.cn/)
 - [NIO-概览 - 杰哥很忙 - 博客园](https://www.cnblogs.com/Jack-Blog/p/11991240.html)
+- [Netty.docs: Related articles](https://netty.io/wiki/related-articles.html)

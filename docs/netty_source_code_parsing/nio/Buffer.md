@@ -50,7 +50,7 @@ public abstract class Buffer {
 
 首先，我们来介绍 `Buffer` 中最重要的三个属性。后续关于 `Buffer` 的各种操作都将依赖于这三个属性的动态变化。  
 
-![image-20241103164939766](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202411031649868.png)
+<img src="https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202411031649868.png?x-oss-process=image/watermark,image_aW1nL3dhdGVyLnBuZw==,g_nw,x_1,y_1" alt="image-20241103164939766" style="zoom: 33%;" />
 
 - **Capacity：** 这个属性很好理解，它规定了**整个 Buffer 的容量**，即具体可以容纳多少个元素。`capacity` 之前的元素均是 **Buffer** 可操作的空间。
 
@@ -60,7 +60,7 @@ public abstract class Buffer {
 
 - **Mark**：`mark` 属性用于**标记 Buffer 当前 `position` 的位置**。这在对网络数据包进行解码时非常有用，特别是在使用 TCP 协议进行网络数据传输时，常常会遇到粘包和拆包的问题。为了解决这些问题，我们在解码之前需要调用 `mark` 方法，将 **Buffer** 的当前 `position` 指针保存到 `mark` 属性中。如果 **Buffer** 中的数据足够解码为一个完整的包，我们就执行解码操作。如果数据不够（即半包），我们会调用 `reset` 方法，将 `position` 还原到原来的位置，以等待剩余的网络数据到达。
 
-![image-20241103165613838](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202411031656000.png)
+<img src="https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202411031656000.png?x-oss-process=image/watermark,image_aW1nL3dhdGVyLnBuZw==,g_nw,x_1,y_1" alt="image-20241103165613838" style="zoom:33%;" />
 
 
 
@@ -79,7 +79,7 @@ public abstract class Buffer {
 
 注意：limit指向的元素位置是不能读取和添加元素的。
 
-![image-20241103165940756](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202411031659829.png)
+<img src="https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202411031659829.png?x-oss-process=image/watermark,image_aW1nL3dhdGVyLnBuZw==,g_nw,x_1,y_1" alt="image-20241103165940756" style="zoom:33%;" />
 
 ```Java
 public abstract class Buffer {
@@ -128,7 +128,7 @@ public abstract class Buffer {
 
 在 **Buffer** 的读模式下，当我们需要从 **Buffer** 中读取数据时，首先要了解当前 **Buffer** 中 `position` 的位置。根据 `position` 的位置，我们可以读取 **Buffer** 中的元素。读取后，`position` 将向后移动指定的步长 `nb`。  
 
-![image-20241103170229965](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202411031702101.png)
+<img src="https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202411031702101.png?x-oss-process=image/watermark,image_aW1nL3dhdGVyLnBuZw==,g_nw,x_1,y_1" alt="image-20241103170229965" style="zoom:33%;" />
 
 `nextGetIndex()` 方法首先获取 **Buffer** 当前 `position` 的位置，并将其作为 `readIndex` 返回给用户。随后，`position` 向后移动一位。在此方法中，步长 `nb` 默认为 1。  
 
@@ -176,7 +176,7 @@ final int nextPutIndex(int nb) {
 
 在 **Buffer** 的写模式下，当我们向 **Buffer** 写入数据后，接下来我们通常需要从 **Buffer** 中读取刚刚写入的数据。由于 NIO 在对 **Buffer** 的设计中，读写模式共用一个 `position` 属性，因此在进行读取之前，我们需要切换到读模式。
 
-![image-20241103170419686](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202411031704832.png)
+<img src="https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202411031704832.png?x-oss-process=image/watermark,image_aW1nL3dhdGVyLnBuZw==,g_nw,x_1,y_1" alt="image-20241103170419686" style="zoom:33%;" />
 
 ```Java
 public final Buffer flip() {
@@ -198,7 +198,7 @@ public final Buffer flip() {
 
 有读模式的切换，自然也就有对应的写模式切换。当我们在读模式下将 **Buffer** 中的数据读取完毕后，如果需要再次向 **Buffer** 写入数据，就必须切换回写模式。
 
-![image-20241103170647878](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202411031706023.png)
+<img src="https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202411031706023.png?x-oss-process=image/watermark,image_aW1nL3dhdGVyLnBuZw==,g_nw,x_1,y_1" alt="image-20241103170647878" style="zoom:33%;" />
 
 ```Java
 public final Buffer clear() {
@@ -218,7 +218,7 @@ public final Buffer clear() {
 
 这引发了一个问题：如果我们在读模式下只读取了 **Buffer** 中的数据的一部分，仍然有未读取的数据存在。当此时调用 `clear()` 方法开启写模式并向 **Buffer** 中写入数据时，就会意外地覆盖掉那些尚未读取的部分。这将导致数据丢失，从而引发错误或不一致的状态。
 
-![image-20241103170951314](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202411031709470.png)
+<img src="https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202411031709470.png?x-oss-process=image/watermark,image_aW1nL3dhdGVyLnBuZw==,g_nw,x_1,y_1" alt="image-20241103170951314" style="zoom:33%;" />
 
 针对这种情况，我们不能简单地设置 **position** 指针，以免未读取的数据部分被覆盖。为了确保这些未读取数据不受影响，我们需要遵循以下步骤：
 
@@ -227,7 +227,7 @@ public final Buffer clear() {
 
 通过这种方式，我们确保未读取的数据安全存储，同时在写入新数据时不会引发潜在的数据丢失问题。这样可以有效地管理 **Buffer** 的状态，提升数据处理的灵活性和安全性。
 
-![image-20241103171036588](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202411031710729.png)
+<img src="https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202411031710729.png?x-oss-process=image/watermark,image_aW1nL3dhdGVyLnBuZw==,g_nw,x_1,y_1" alt="image-20241103171036588" style="zoom:33%;" />
 
 由于 **Buffer** 是顶层设计，主要负责定义相关操作规范，并未具体定义数据存储方式。因此，`**compact()**` 方法的实现被放置在具体的子类中。以下是 **HeapByteBuffer** 的实现示例：  
 
@@ -319,7 +319,7 @@ public abstract class ByteBuffer extends Buffer implements Comparable<ByteBuffer
 
 事实上我们可以根据一段连续的内存地址或者一个数组创建出不同的 Buffer 视图出来。
 
-![img](https://cdn.nlark.com/yuque/0/2024/webp/35210587/1729921394594-ac665b03-93d7-40d3-9fcf-36f4b27893e7.webp?x-oss-process=image%2Fresize%2Cw_937%2Climit_0)
+![img](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202411071452272.webp)
 
 **我们可以根据原生** `Buffer` **中的部分数据（例如图中的未处理数据部分）创建一个新的** `Buffer` **视图**。这个新的视图 `Buffer` 本质上也是一个 `Buffer`，拥有独立的 `mark`、`position`、`limit` 和 `capacity` 指针。这四个指针会在新的视图 `Buffer` 下重新被创建和赋值。因此，在新的视图 `Buffer` 下，操作与普通 `Buffer` 相同，也可以使用《2.2 Buffer 中定义的核心抽象操作》小节中介绍的那些方法，只不过操作的数据范围不同。
 
@@ -373,7 +373,7 @@ public abstract class ByteBuffer extends Buffer implements Comparable<ByteBuffer
 
 ByteBuffer 中除了之前介绍的 Buffer 类中定义的四种重要属性之外，又额外定义了三种属性；
 
-![img](https://cdn.nlark.com/yuque/0/2024/webp/35210587/1729921634233-bbfc88b8-7e0e-46f4-a52e-79f005350be8.webp?x-oss-process=image%2Fresize%2Cw_937%2Climit_0)
+![img](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202411071452127.webp)
 
 - `byte[] hb`：这是 `ByteBuffer` 中依赖的用于存储数据的数组。该字段只适用于 `HeapByteBuffer`，而 `DirectByteBuffer` 和 `MappedByteBuffer` 则依赖于堆外内存。堆外内存的起始地址存储于 `Buffer` 类中的 `address` 字段中。
 - `int offset`：这是 `ByteBuffer` 中的内存偏移量，用于创建新的 `ByteBuffer` 视图。详细内容可回顾《4. Buffer 的视图》小节。
@@ -429,7 +429,7 @@ HeapByteBuffer(byte[] buf, int off, int len) { // package-private
 }
 ```
 
-![img](https://cdn.nlark.com/yuque/0/2024/webp/35210587/1729921896635-4eb32a31-f32e-4349-8858-ab21a47f37bd.webp?x-oss-process=image%2Fresize%2Cw_937%2Climit_0)
+![1729921896635-4eb32a31-f32e-4349-8858-ab21a47f37bd](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202411071452952.webp)
 
 以上介绍的 `wrap` 映射方法是根据用户自定义的 `position` 和 `limit` 对原生字节数组进行灵活映射。当然，NIO 中还提供了一个方法，可以直接对原生字节数组 `array` 进行默认的全部映射。映射后的 Buffer 为：
 
@@ -458,7 +458,7 @@ public abstract ByteBuffer slice();
 
 调用 `slice()` 方法创建出来的  ByteBuffer 视图内容是从原生 ByteBufer 的当前位置 position 开始一直到 limit 之间的数据。也就是说通过 slice() 方法创建出来的视图里边的数据是原生 ByteBuffer 中还未处理的数据部分。
 
-![img](https://cdn.nlark.com/yuque/0/2024/webp/35210587/1729932904944-a0fbf46f-513c-4f23-a534-dddd19094529.webp)
+![1729932904944-a0fbf46f-513c-4f23-a534-dddd19094529](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202411071449433.webp)
 
 
 
@@ -492,7 +492,7 @@ class HeapByteBuffer extends ByteBuffer {
 public abstract ByteBuffer duplicate();
 ```
 
-![img](https://cdn.nlark.com/yuque/0/2024/webp/35210587/1729933006886-1c52e185-4cc6-4255-af89-26b35bb5708a.webp?x-oss-process=image%2Fresize%2Cw_937%2Climit_0)
+![1729933006886-1c52e185-4cc6-4255-af89-26b35bb5708a](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202411071449514.webp)
 
 下面是 HeapByteBuffer 中关于 `duplicate()` 方法的具体实现：
 
@@ -625,7 +625,7 @@ HeapByteBuffer 的底层就是直接使用的此 `hb`数组，
 
 ## HeapByteBuffer 的相关实现
 
-![img](https://cdn.nlark.com/yuque/0/2024/webp/35210587/1729933370162-a5247038-9d19-45be-a224-50a237363858.webp?x-oss-process=image%2Fresize%2Cw_937%2Climit_0)
+![1729933370162-a5247038-9d19-45be-a224-50a237363858](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202411071448996.webp)
 
 经过前面几个小节的介绍，大家应该对 `HeapByteBuffer` 的结构有了清晰的了解。`HeapByteBuffer` 主要依赖于 JVM 堆中的一个字节数组 `byte[] hb`。
 
@@ -799,7 +799,7 @@ class Bits {
 
 同理，`int2(x)`、`int1(x)` 和 `int0(x)` 方法依次获取 `x` 的次高位字节，并依次写入字节数组中的低地址中。
 
-![img](https://cdn.nlark.com/yuque/0/2024/webp/35210587/1729934578136-6ea028b2-0595-4a2f-9125-a617975cfb99.webp)
+![1729934578136-6ea028b2-0595-4a2f-9125-a617975cfb99](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202411071448006.webp)
 
 那么我们如何依次获得一个 int 型数据的高位字节呢？大家接着跟着笔者往下走~
 
@@ -823,7 +823,7 @@ class Bits {
 }
 ```
 
-![img](https://cdn.nlark.com/yuque/0/2024/webp/35210587/1729934637674-cf41a067-8d82-4433-9112-b222982ce49a.webp)
+![1729934637674-cf41a067-8d82-4433-9112-b222982ce49a](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202411071447733.webp)
 
 #### int1(x) 获取 int 型第三高位字节
 
@@ -835,7 +835,7 @@ class Bits {
 }
 ```
 
-![img](https://cdn.nlark.com/yuque/0/2024/webp/35210587/1729934680420-57576c32-33fa-4e32-aaea-2ad587493891.webp)
+![1729934680420-57576c32-33fa-4e32-aaea-2ad587493891](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202411071447154.webp)
 
 #### int0(x) 获取 int 型最低位字节
 
@@ -847,11 +847,11 @@ class Bits {
 }
 ```
 
-![img](https://cdn.nlark.com/yuque/0/2024/webp/35210587/1729934699015-ba608f5f-2271-4226-8014-122971ab0814.webp)
+![1729934699015-ba608f5f-2271-4226-8014-122971ab0814](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202411071447538.webp)
 
 最终 int 型变量 5764 按照大端字节序写入到 HeapByteBuffer之后的字节数组结构如下：
 
-![img](https://cdn.nlark.com/yuque/0/2024/webp/35210587/1729934735421-227e6299-6267-451a-92ed-85dc2d32dfca.webp)
+![1729934735421-227e6299-6267-451a-92ed-85dc2d32dfca](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202411071446452.webp)
 
 ### 小端字节序
 
@@ -868,7 +868,7 @@ static void putIntL(ByteBuffer bb, int bi, int x) {
 
 根据我们之前介绍的小端字节序的定义，在小端模式下二进制数据的高位是存储在字节数组中的高地址中，二进制数据的低位是存储在字节数组中的低地址中。
 
-![img](https://cdn.nlark.com/yuque/0/2024/webp/35210587/1729934765327-cbd7ff91-cc5e-42ad-abb6-4aacf1981fcb.webp)
+![1729934765327-cbd7ff91-cc5e-42ad-abb6-4aacf1981fcb](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202411071445280.webp)
 
 ## 从 HeapByteBuffer 中读取指定基本类型
 
@@ -912,7 +912,7 @@ class Bits {
 }
 ```
 
-![img](https://cdn.nlark.com/yuque/0/2024/webp/35210587/1729935060948-1890f3c8-3e71-483e-9480-74b73230dfdb.webp)
+![1729935060948-1890f3c8-3e71-483e-9480-74b73230dfdb](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202411071445171.webp)
 
 由于在大端模式下，二进制数据的高位是存放于字节数组中的低地址中，我们需要从字节数组中的低地址中依次读取二进制数据的高位出来。
 
@@ -929,7 +929,7 @@ static private int makeInt(byte b3, byte b2, byte b1, byte b0) {
 
 ### 小端字节序
 
-![img](https://cdn.nlark.com/yuque/0/2024/webp/35210587/1729935092468-a66047b1-327d-4ceb-b825-954ac586990f.webp)
+![1729935092468-a66047b1-327d-4ceb-b825-954ac586990f](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202411071445433.webp)
 
 ```java
 class Bits { 

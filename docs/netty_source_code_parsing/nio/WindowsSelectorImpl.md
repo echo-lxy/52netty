@@ -54,7 +54,7 @@ public class WindowsSelectorProvider extends SelectorProviderImpl {
 
 `PollArrayWrapper`用于存放文件描述符的文件描述符和事件掩码的native数组。相关的文件描述符的结构如下图：
 
-![img](https://images2015.cnblogs.com/blog/1069650/201706/1069650-20170616132816196-976768578.png)
+![img](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202411071454063.png)
 
 其中每项的结构如下：
 

@@ -136,7 +136,7 @@ public final FileChannel getChannel() {
 
 ## FileChannelImpl
 
-![20191219111345.png](https://img2018.cnblogs.com/blog/580757/201912/580757-20191219111347307-739752164.png)
+<img src="https://img2018.cnblogs.com/blog/580757/201912/580757-20191219111347307-739752164.png" alt="20191219111345.png" style="zoom:67%;" />
 
 ### 创建
 
@@ -381,7 +381,7 @@ public long transferTo(long position, long count, WritableByteChannel target) th
 
 通常情况下我们要将一个通道的数据传到另一个通道。举个例子，从一个文件读取数据通过socket通道进行发送。比如通过http协议读取服务器上的一个静态文件。
 
-![img](https://upload-images.jianshu.io/upload_images/272719-9b800f62a9c0e47d.PNG?imageMogr2/auto-orient/strip%7CimageView2/2/w/544)
+![272719-9b800f62a9c0e47d](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202411071439500.webp)
 
 - 文件从硬盘读取(拷贝)页缓冲区
 - 从页缓冲区读取(拷贝)数据到用户缓冲区
@@ -391,7 +391,7 @@ public long transferTo(long position, long count, WritableByteChannel target) th
 当我们通过`transferTo`在通道之间数据传输时，若内核支持，则会使用[零拷贝](https://www.jianshu.com/p/fad3339e3448)的方式传输数据。
 
 通过零拷贝技术可以避免将数据拷贝到用户空间中。
-![img](https://upload-images.jianshu.io/upload_images/272719-5c49aebc85085726.PNG?imageMogr2/auto-orient/strip%7CimageView2/2/w/626)
+![272719-5c49aebc85085726](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202411071440663.PNG)
 
 ##### 直接传输
 
@@ -399,7 +399,7 @@ public long transferTo(long position, long count, WritableByteChannel target) th
 
 > 使用直接传输时，只能从文件通道传输到网络通道。
 
-![img](https://upload-images.jianshu.io/upload_images/272719-8461cc4141c8dd45.PNG?imageMogr2/auto-orient/strip%7CimageView2/2/w/833)
+![272719-8461cc4141c8dd45](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202411071440488.PNG)
 
 ```java
 private long transferToDirectly(long position, int icount, WritableByteChannel target) throws IOException
@@ -451,7 +451,7 @@ Java_sun_nio_ch_FileChannelImpl_transferTo0(JNIEnv *env, jobject this,
 
 若内核不支持上述方式则会尝试使用mmap(内存映射文件)的方式传输。
 
-![img](https://upload-images.jianshu.io/upload_images/272719-c955c60095647d6e.PNG?imageMogr2/auto-orient/strip%7CimageView2/2/w/550)
+![272719-8461cc4141c8dd45](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202411071440488.PNG)
 
 应用程序调用`mmap()`，磁盘上的数据会通过DMA被拷贝的页缓冲区，接着操作系统会把这段页缓冲区与应用程序共享，这样就不需要把页缓冲区的内容复制到用户空间了。应用程序再调用`write()`,操作系统直接将页缓冲区的内容拷贝到socket缓冲区中，这一切都发生在内核空间，最后，socket缓冲区再把数据发到网卡去。
 
@@ -473,7 +473,7 @@ private long transferToTrustedChannel(long position, long count, WritableByteCha
 
 当多个进程的虚拟内存映射到同一块物理内存时，若不采用写时复制，则由于共用一块物理内存，会相互影响。当使用了写时复制的技术后，一旦一个进程要修改页面时，就会复制一个副本，因此不会影响其他进程。
 
-![img](https://img-blog.csdnimg.cn/20190225160314362.png?x-oss-process=image/watermark,type_ZmFuZ3poZW5naGVpdGk,shadow_10,text_aHR0cHM6Ly9ibG9nLmNzZG4ubmV0L3B1bGlhbzQxNjc=,size_16,color_FFFFFF,t_70)
+![20190225160314362](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202411071442242.png)
 
 ```java
 map(MapMode.READ_ONLY, position, size);

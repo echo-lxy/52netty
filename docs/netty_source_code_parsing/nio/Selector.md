@@ -224,7 +224,7 @@ public class EPollSelectorProvider
 windows下创建了`WindowsSelectorImpl`,linux下创建了`EPollSelectorImpl`。
 
 所有的`XXXSelectorImpl`都继承自`SelectorImpl`，可以在`jdk\src\[macosx|windows|solaris|share]\classes\sun\nio\ch`找到实现`XXXSelectorImpl.java`。继承关系如下图所示。
-![20200102205431.png](https://img2018.cnblogs.com/blog/580757/202001/580757-20200102205432942-2035046906.png)
+![20200102205431.png](D:/desktop/580757-20200102205432942-2035046906.png)
 
 接下里我们讨论一下Selector提供的主要功能，后面在分析Windows和Linux下`Selector`的具体实现。
 
@@ -310,6 +310,6 @@ while (it.hasNext()) {
 
 本文对`Selector`、`SelectorProvider`的创建进行分析，总的流程可以参考下图
 
-![img](https://blog-pictures.oss-cn-shanghai.aliyuncs.com/Selector.open.png)
+![img](D:/desktop/Selector.open.png)
 
 对于后面步骤的`EpollArrayWarpper()`会在`SelectorImpl`个平台具体实现进行讲解。后面会分2对`WindowsSelectorImpl`和`EpollSelectorImpl`进行分析。

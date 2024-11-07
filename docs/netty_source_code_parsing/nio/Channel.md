@@ -209,7 +209,7 @@ public void interrupt() {
 }
 ```
 
-![image-20241103204500849](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202411032045914.png)
+<img src="https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202411032045914.png" alt="image-20241103204500849" style="zoom: 67%;" />
 
 #### end方法
 
@@ -237,7 +237,7 @@ protected final void end(boolean completed) throws AsynchronousCloseException
 
 end()逻辑的活动图如下：
 
-![image-20241103204753221](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202411032047284.png)
+<img src="https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202411032047284.png" alt="image-20241103204753221" style="zoom:67%;" />
 
 #### 场景分析
 
@@ -513,7 +513,7 @@ TCP 协议除了不支持组播，其他和 UDP 是一样的,不再重复介绍�
 
 ## 文件
 
-![20191209112005.png](https://img2018.cnblogs.com/blog/580757/201912/580757-20191209112004483-1940710084.png)
+<img src="https://img2018.cnblogs.com/blog/580757/201912/580757-20191209112004483-1940710084.png" alt="20191209112005.png" style="zoom:67%;" />
 
 文件比网络协议少了`NetworkChannel`、`SelChImpl`和`SelectableChannel`。`SelChImpl`和`SelectableChannel`主要是用于支持选择器的，由于网络传输大多数连接时空闲的，而且数据何时会到来并不知晓，同时需要支持高并发来连接，因此支持多路复用技术可以显著的提高性能，而磁盘读写则没有该需求，因此无需选择器。
 

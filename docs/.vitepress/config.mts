@@ -7,6 +7,7 @@ export default defineConfig({
   lastUpdated: true,
   markdown: {
     math: true,
+    lineNumbers: true,
   },
   head: [
     [

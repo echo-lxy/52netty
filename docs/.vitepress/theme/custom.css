@@ -21,13 +21,19 @@
 
 .content img {
   display: block; /* 确保图像为块级元素 */
-  margin: 0 auto; /* 自动左右外边距以实现居中 */
-  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2); /* 添加阴影效果 */
-  border-radius: 4px; /* 可选：使边角圆润 */
+  margin: 20px auto; /* 自动左右外边距以实现居中 */
+  /* box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2); 添加阴影效果 */
+  /* border-radius: 4px; 可选：使边角圆润 */
 }
 
 
 .content strong{
   /* color: #4b5cc4; */
   padding: 0 3px; /* 增加左右间距 */
+}
+
+.content table {
+  margin: 0 auto; /* 水平居中 */
+  width: 80%; /* 表格宽度是父容器的 80% */
+  max-width: 100%; /* 最大宽度不超过父容器 */
 }

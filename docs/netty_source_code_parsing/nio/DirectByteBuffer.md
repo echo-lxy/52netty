@@ -1,15 +1,17 @@
-# DirectByteBuffer & MappedByteBuffer
+# DirectByteBuffer & MappedByteBuffer 源码分析
 
 ## 前言
 
-对于 ByteBuffer 而言，有两个较为特殊的类 DirectByteBuffer 和 MappedByteBuffer，这两个类的原理都是基于内存文件映射的。
+请在阅读本文之前，务必先阅读[《Buffer 源码解析》]()。
 
-ByteBuffer 分为两种，一种是直接的，另外一种是间接的。
+对于 `ByteBuffer` 而言，有两个较为特殊的类：`DirectByteBuffer` 和 `MappedByteBuffer`，这两个类的原理都是基于内存文件映射的。
 
-- 直接缓冲：直接使用内存映射，对于 Java 而言就是直接在 JVM 之外分配虚拟内存地址空间，Java 中使用 DirectByteBuffer 来实现，也就是堆外内存。
-- 间接缓冲：是在 JVM 堆上实现，Java 中使用 HeapByteBuffer 来实现，也就是堆内内存。
+`ByteBuffer` 分为两种，一种是直接的，另一种是间接的。
 
-我们这篇文章主要分析直接缓冲，即 DirectByteBuffer。在了解 DirectByteBuffer 之前我们需要先了解操作系统的内存管理方面的知识点。
+- **直接缓冲**：直接使用内存映射，对于 Java 而言，就是直接在 JVM 之外分配虚拟内存地址空间，Java 中使用 `DirectByteBuffer` 来实现，也就是堆外内存。
+- **间接缓冲**：是在 JVM 堆上实现，Java 中使用 `HeapByteBuffer` 来实现，也就是堆内内存。
+
+我们这篇文章主要分析直接缓冲，即 `DirectByteBuffer`。在了解 `DirectByteBuffer` 之前，我们需要先了解操作系统的内存管理方面的知识点。
 
 ## 内存映射
 
@@ -17,7 +19,9 @@ ByteBuffer 分为两种，一种是直接的，另外一种是间接的。
 
 <img src="https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202411031805181.png" alt="image-20241103180547102" style="zoom:67%;" />
 
-注意其中一块区域“Memory mapped region for shared libraries”，这块区域就是内存映射文件的时候将某一段的虚拟地址和文件对象的某一部分建立映射关系，此时并没有拷贝数据到内存中，而是当进程代码第一次引用这段代码内的虚拟地址时，触发了缺页异常，这时候 OS 根据映射关系直接将文件的相关部分数据拷贝到进程的用户私有空间中去，当有操作第 N 页数据的时候重复这样的 OS 页面调度程序操作。这样就**减少了文件拷贝到内核空间，再拷贝到用户空间**，效率比标准 IO 高。下面两张图片是标准 IO 操作和内存映射文件，小伙伴们可以认真对比下（图片来自：[blog.csdn.net/linxdcn/art…](https://link.juejin.cn?target=https%3A%2F%2Fblog.csdn.net%2Flinxdcn%2Farticle%2Fdetails%2F72903422)）。
+注意其中一块区域“Memory mapped region for shared libraries”。这块区域是在内存映射文件时，将某一段的虚拟地址和文件对象的某一部分建立映射关系。此时，并没有拷贝数据到内存中，而是当进程代码第一次引用这段代码内的虚拟地址时，触发缺页异常。此时，操作系统根据映射关系，直接将文件的相关部分数据拷贝到进程的用户私有空间中去。当有操作第 N 页数据时，重复这样的操作，执行 OS 页面调度程序。
+
+这种方式**减少了文件从内核空间到用户空间的拷贝**，效率比标准 IO 高。下面两张图片展示了标准 IO 操作和内存映射文件的对比，小伙伴们可以认真对比一下（图片来自：[blog.csdn.net/linxdcn/art…](https://link.juejin.cn?target=https%3A%2F%2Fblog.csdn.net%2Flinxdcn%2Farticle%2Fdetails%2F72903422)）。
 
 - **标准 IO**
 
@@ -33,33 +37,33 @@ ByteBuffer 分为两种，一种是直接的，另外一种是间接的。
 
 ## 直接内存
 
-直接内存是一种特殊的内存缓冲区，并不在 Java 堆或方法区中分配的，而是通过 JNI 的方式在本地内存上分配的。
+直接内存是一种特殊的内存缓冲区，并不在 Java 堆或方法区中分配，而是通过 JNI 的方式在本地内存上分配。
 
-::: info JNI 是什么
+::: tip JNI 是什么 
 
-JNI 全称 Java Native Interface。Java本地方法接口，它是Java语言允许Java代码与C、C++代码交互的标准机制。维基百科是这样解释的：“当应用无法完全用Java编程语言实现的时候，（例如，标准Java类库不支持的特定平台特性或者程序库时），JNI使得编程者能够编写native方法来处理这种情况”。这就意味着，在一个Java应用程序中，我们可以使用我们需要的C++类库，并且直接与Java代码交互，而且在可以被调用的C++程序内，反过来调用Java方法（回调函数）。
+**JNI**（Java Native Interface）是 Java 本地方法接口，它允许 Java 代码与 C、C++ 代码交互的标准机制。维基百科这样解释：“当应用无法完全用 Java 编程语言实现时（例如，标准 Java 类库不支持的特定平台特性或程序库），JNI 使得编程者能够编写 native 方法来处理这种情况”。这意味着，在一个 Java 应用程序中，我们可以使用所需的 C++ 类库，并直接与 Java 代码交互，甚至在 C++ 程序内反过来调用 Java 方法（回调函数）。 
 
 :::
 
-直接内存并不是虚拟机运行时数据区的一部分，也不是虚拟机规范中定义的内存区域，但是这部分内存也被频繁地使用。而且也可能导致 `OutOfMemoryError` 错误出现。
+直接内存并不是虚拟机运行时数据区的一部分，也不是虚拟机规范中定义的内存区域，但这部分内存被频繁使用，并且可能会导致 `OutOfMemoryError` 错误的出现。
 
-JDK1.4 中新加入的 **NIO（Non-Blocking I/O，也被称为 New I/O）**，引入了一种基于**通道（Channel）与缓存区（Buffer）的 I/O 方式，它可以直接使用 Native 函数库直接分配堆外内存，然后通过一个存储在 Java 堆中的 DirectByteBuffer 对象作为这块内存的引用进行操作。这样就能在一些场景中显著提高性能，因为避免了在 Java 堆和 Native 堆之间来回复制数据。**
+**JDK1.4 中新加入的 NIO（Non-Blocking I/O，也被称为 New I/O），引入了一种基于 通道（Channel）与 缓存区（Buffer）的 I/O 方式。它可以直接使用 Native 函数库分配堆外内存，然后通过存储在 Java 堆中的 `DirectByteBuffer` 对象来引用并操作这块内存。这样可以在一些场景中显著提高性能，因为避免了在 Java 堆和 Native 堆之间来回复制数据。**
 
-直接内存的分配不会受到 Java 堆的限制，但是，既然是内存就会受到本机总内存大小以及处理器寻址空间的限制。
+直接内存的分配不会受到 Java 堆的限制，但仍会受到本机总内存大小以及处理器寻址空间的限制。
 
-类似的概念还有 **堆外内存** 。在一些文章中将直接内存等价于堆外内存，个人觉得不是特别准确。
+类似的概念还有 **堆外内存**。在一些文章中，直接内存与堆外内存等价，但个人认为这并不完全准确。
 
-堆外内存就是把内存对象分配在堆外的内存，这些内存直接受操作系统管理（而不是虚拟机），这样做的结果就是能够在一定程度上减少垃圾回收对应用程序造成的影响。
+堆外内存指的是将内存对象分配到堆外，这些内存直接由操作系统管理，而非虚拟机。这样做的结果是可以在一定程度上减少垃圾回收对应用程序的影响。
 
 ## MappedByteBuffer
 
-先看 MappedByteBuffer 和 DirectByteBuffer 的类图：
+先看 `MappedByteBuffer` 和 `DirectByteBuffer` 的类图：
 
 <img src="https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202411031806038.png" alt="image-20241103180643982" style="zoom:67%;" />
 
-MappedByteBuffer 是一个抽象类，DirectByteBuffer 则是他的子类。
+`MappedByteBuffer` 是一个抽象类，`DirectByteBuffer` 则是它的子类。
 
-MappedByteBuffer 作为抽象类，其实它本身还是非常简单的。定义如下
+作为抽象类，`MappedByteBuffer` 本身其实非常简单，定义如下：
 
 ```java
 public abstract class MappedByteBuffer extends ByteBuffer {
@@ -83,7 +87,7 @@ public abstract class MappedByteBuffer extends ByteBuffer {
 }
 ```
 
-其实在父类 Buffer 中有一个非常重要的属性 **address**
+其实在父类 `Buffer` 中有一个非常重要的属性 `address`
 
 ```Java
 // Used only by direct buffers
@@ -91,9 +95,9 @@ public abstract class MappedByteBuffer extends ByteBuffer {
 long address;
 ```
 
-这个属性表示分配堆外内存的地址，是为了在 JNI 调用 GetDirectBufferAddress 时提升它调用的速率。这个属性我们在后面会经常用到，到时候再分析。
+这个属性表示分配堆外内存的地址，目的是为了在 JNI 调用 `GetDirectBufferAddress` 时提升调用的速率。这个属性我们在后面会经常用到，到时候再做详细分析。
 
-MappedByteBuffer 作为抽象类，我们可以通过调用 FileChannel 的 `map()` 方法来创建，如下：
+`MappedByteBuffer` 作为抽象类，我们可以通过调用 `FileChannel` 的 `map()` 方法来创建，代码如下：
 
 ```Java
 FileInputStream inputStream = new FileInputStream("/Users/echo/Downloads/test.txt");
@@ -108,26 +112,28 @@ public abstract MappedByteBuffer map(MapMode mode, long position, long size)
     throws IOException;
 ```
 
-该方法可以把文件的从 position 开始的 size 大小的区域映射为 MappedByteBuffer，mode 定义了可访问该内存映射文件的访问方式，共有三种
+该方法可以将文件从 `position` 开始的 `size` 大小的区域映射为 `MappedByteBuffer`，`mode` 定义了可访问该内存映射文件的访问方式，共有三种：
 
-- `MapMode.READ_ONLY`（只读）： 试图修改得到的缓冲区将导致抛出 ReadOnlyBufferException。
-- `MapMode.READ_WRITE`（读/写）： 对得到的缓冲区的更改最终将写入文件；但该更改对映射到同一文件的其他程序不一定是可见的。
-- `MapMode.PRIVATE`（专用）： 可读可写,但是修改的内容不会写入文件,只是buffer自身的改变，这种能力称之为”copy on write”
+- `MapMode.READ_ONLY`（只读）：试图修改得到的缓冲区将导致抛出 `ReadOnlyBufferException`。
+- `MapMode.READ_WRITE`（读/写）：对得到的缓冲区的更改最终将写入文件；但该更改对映射到同一文件的其他程序不一定是可见的。
+- `MapMode.PRIVATE`（专用）：可读可写，但修改的内容不会写入文件，仅是 `buffer` 自身的改变，这种能力称为 “copy on write”。
 
-MappedByteBuffer 作为 ByteBuffer 的子类，它同时也是一个抽象类，相比 ByteBuffer ，它新增了三个方法：
+`MappedByteBuffer` 作为 `ByteBuffer` 的子类，它同时也是一个抽象类，相比 `ByteBuffer`，它新增了三个方法：
 
-- `isLoaded()`：如果缓冲区的内容在物理内存中，则返回真，否则返回。
+- `isLoaded()`：如果缓冲区的内容在物理内存中，则返回 `true`，否则返回 `false`。
 - `load()`：将缓冲区的内容载入内存，并返回该缓冲区的引用。
-- `force()`：缓冲区是READ_WRITE模式下，此方法对缓冲区内容的修改强行写入文件。
+- `force()`：如果缓冲区处于 `READ_WRITE` 模式下，此方法会强制将缓冲区内容的修改写入文件。
 
 ### 与传统 IO 性能对比
 
-相比传统 IO， MappedByteBuffer 就一个字，**快**！！！，它快就在于它采用了 direct buffer（内存映射） 的方式来读取文件内容。这种方式是直接调动系统底层的缓存，没有 JVM，少了内核空间和用户空间之间的复制操作，所以效率大大提高了。那它相比传统 IO 它快了多少呢？下面我们来做个小实验。
+相比传统 IO，`MappedByteBuffer` 就一个字，**快**！它之所以快速，是因为它采用了 direct buffer（内存映射） 的方式来读取文件内容。这种方式直接调动系统底层的缓存，没有 JVM 的参与，省去了内核空间和用户空间之间的复制操作，因此效率大大提高。
 
-- 首先我们写一个程序用来生成文件。
+那么，`MappedByteBuffer` 相比传统 IO 快了多少呢？下面我们来做个小实验。
+
+- 首先，我们写一个程序用来生成文件。
 
 ```java
-ini 代码解读复制代码int size = 1024 * 10;
+int size = 1024 * 10;
 File file = new File("/Users/chenssy/Downloads/fileTest.txt");
 
 byte[] bytes = new byte[size];
@@ -138,12 +144,12 @@ for (int i = 0 ; i < size ; i++) {
 FileUtil.writeBytes(bytes,file);
 ```
 
-通过更改 size 的数字，我们可以生成 10k，1M，10M，100M，1G 五个文件，我们就这两个文件来对比 MappedByteBuffer 和 传统 IO 读取文件内容的性能。
+通过更改 `size` 的数字，我们可以生成 10KB、1MB、10MB、100MB、1GB 五个文件。接下来，我们将使用这两个文件来对比 `MappedByteBuffer` 和传统 IO 读取文件内容的性能。
 
 - 传统 IO 读取文件
 
 ```java
-ini 代码解读复制代码File file = new File("/Users/chenssy/Downloads/fileTest.txt");
+File file = new File("/Users/chenssy/Downloads/fileTest.txt");
 FileInputStream in = new FileInputStream(file);
 FileChannel channel = in.getChannel();
 
@@ -158,10 +164,10 @@ long end = System.currentTimeMillis();
 System.out.println("time is:" + (end - begin));
 ```
 
-- MappedByteBuffer 读取文件
+- `MappedByteBuffer` 读取文件
 
 ```java
-ini 代码解读复制代码int BUFFER_SIZE = 1024;
+int BUFFER_SIZE = 1024;
 
 File file = new File("/Users/chenssy/Downloads/fileTest.txt");
 FileChannel fileChannel = new FileInputStream(file).getChannel();
@@ -189,13 +195,13 @@ System.out.println("time is:" + (end - begin));
 
 <img src="https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202411031813924.png" alt="image-20241103181312855" style="zoom:67%;" />
 
-绿色是传统 IO 读取文件的，蓝色是使用 MappedByteBuffer 来读取文件的，从图中我们可以看出，文件越大，两者读取速度差距越大，所以 MappedByteBuffer 一般适用于大文件的读取。
+绿色是传统 IO 读取文件的，蓝色是使用 `MappedByteBuffer` 来读取文件的，从图中我们可以看出，文件越大，两者读取速度差距越大，所以 `MappedByteBuffer` 一般适用于大文件的读取。
 
 ## DirectByteBuffer
 
-父类 MappedByteBuffer 做了基本的介绍，且与传统 IO 做了一个对比，这里就不对 DirectByteBuffer 做介绍了，咱们直接撸源码，撸了源码后我相信你对堆外内存会有更加深入的了解。
+父类 `MappedByteBuffer` 已经做了基本的介绍，并且与传统 IO 做了对比，因此在这里我们不再对 `DirectByteBuffer` 进行详细介绍。接下来我们直接看源码，通过源码的分析，相信你会对堆外内存有更加深入的了解。
 
-DirectByteBuffer 是包访问级别，其定义如下：
+`DirectByteBuffer` 是包访问级别，其定义如下：
 
 ```java
 class DirectByteBuffer extends MappedByteBuffer implements DirectBuffer {

@@ -2,7 +2,7 @@
 
 ## UDP 协议
 
-NIO 使用 DatagrmChannel 实现了UDP协议的网络通讯
+NIO 使用 `DatagrmChannel` 实现了 UDP 协议的网络通讯
 
 <img src="https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202411021832112.png" alt="image-20241102183255920" style="zoom: 33%;" />
 
@@ -22,9 +22,10 @@ public interface Closeable extends AutoCloseable {
 }
 ```
 
-* **`AutoCloseable`**：这是一个自Java 7引入的接口，目的是与**try-with-resources**语句一起使用。`AutoCloseable`更为通用，允许任何需要在不再使用时释放的资源实现它。它的`close()`方法可以抛出任意类型的异常（`Exception`）。
+* `AutoCloseable`：目的是与 `try-with-resources` 语句一起使用。`AutoCloseable` 更为通用，允许任何需要在不再使用时释放的资源实现它。它的 `close()` 方法可以抛出任意类型的异常
 
-* **`Closeable`**：这是Java 5引入的一个接口，最初是为**I/O资源**（如`InputStream`、`OutputStream`和`Reader`等）设计的。`Closeable`继承了`AutoCloseable`接口，但它的`close()`方法只能抛出**`IOException`**（受检异常），因此更适合处理I/O类的资源。
+* `Closeable`：最初是为 I/O 资源（如 `InputStream`、`OutputStream` 和 `Reader` 等）设计的。`Closeable` 继承了 `AutoCloseable` 接口，但它的 `close()` 方法只能抛出 `IOException`（受检异常），因此更适合处理 I/O 类的资源。
+
 
 ### Channel
 
@@ -40,7 +41,9 @@ public interface Channel extends Closeable {
 
 ### InterruptibleChannel
 
-Java传统IO是不支持中断的，所以如果代码在read/write等操作阻塞的话，是无法被中断的。这就无法和Thead的interrupt模型配合使用了。JavaNIO众多的升级点中就包含了IO操作对中断的支持。InterruptiableChannel表示支持中断的Channel。我们常用的FileChannel，SocketChannel，DatagramChannel都实现了这个接口。
+Java传统IO是不支持中断的，因此如果代码在 `read`、`write` 等操作中阻塞时，无法被中断。这使得它无法与 `Thread` 的 `interrupt` 模型配合使用。
+
+Java NIO 的众多升级点之一就是支持IO操作中的中断。`InterruptibleChannel` 表示支持中断的 `Channel`。常用的 `FileChannel`、`SocketChannel` 和 `DatagramChannel` 都实现了这个接口。
 
 ```Java
 public interface InterruptibleChannel extends Channel{
@@ -55,13 +58,13 @@ public interface InterruptibleChannel extends Channel{
 }
 ```
 
-InterruptibleChannel接口没有定义任何方法，其中的close方法是父接口就有的，这里只是添加了额外的注释。
+`InterruptibleChannel` 接口没有定义任何方法，其中的 `close` 方法是继承自父接口的，这里只是添加了额外的注释。
 
-AbstractInterruptibleChannel实现了InterruptibleChannel接口，并提供了实现可中断IO机制的重要的方法，比如begin()，end()。
+`AbstractInterruptibleChannel` 实现了 `InterruptibleChannel` 接口，并提供了实现可中断 IO 机制的重要方法，例如 `begin()` 和 `end()`。
 
-在解读这些方法的代码前，先了解一下NIO中，支持中断的Channel代码是如何编写的。
+在解读这些方法的代码之前，我们先了解一下 NIO 中支持中断的 `Channel` 是如何编写的。
 
-第一个要求是要正确使用begin()和end()方法：
+第一个要求是要正确使用 `begin()` 和 `end()` 方法：
 
 ```java
 boolean completed = false;
@@ -80,11 +83,11 @@ try {
 }
 ```
 
-NIO规定了，在阻塞IO的语句前后，需要调用begin()和end()方法，为了保证end()方法一定被调用，要求放在finally语句块中。
+NIO 规定，在阻塞 IO 的语句前后，需要调用 `begin()` 和 `end()` 方法。为了保证 `end()` 方法一定被调用，要求将其放在 `finally` 语句块中。
 
-第二个要求是Channel需要实现java.nio.channels.spi.AbstractInterruptibleChannel#implCloseChannel这个方法。AbstractInterruptibleChannel在处理中断时，会调用这个方法，使用Channel的具体实现来关闭Channel。
+第二个要求是 `Channel` 需要实现 `java.nio.channels.spi.AbstractInterruptibleChannel#implCloseChannel` 这个方法。`AbstractInterruptibleChannel` 在处理中断时，会调用这个方法，利用 `Channel` 的具体实现来关闭 `Channel`。
 
-接下来我们具体看一下begin()和end()方法是如何实现的。
+接下来，我们具体看一下 `begin()` 和 `end()` 方法是如何实现的。
 
 #### begin方法
 
@@ -125,9 +128,9 @@ NIO规定了，在阻塞IO的语句前后，需要调用begin()和end()方法，
  }
 ```
 
-从begin()方法中，我们可以看出NIO实现可中断IO操作的思路，是在Thread的中断逻辑中，挂载自定义的中断处理对象，这样Thread对象在被中断时，会执行中断处理对象中的回调，这个回调中，执行关闭Channel的操作。这样就实现了Channel对线程中断的响应了。
+从 `begin()` 方法中，我们可以看出 NIO 实现可中断 IO 操作的思路是在 `Thread` 的中断逻辑中**挂载**自定义的中断处理对象。这样，当 `Thread` 被中断时，会执行中断处理对象中的回调，在回调中执行关闭 `Channel` 的操作。这样就实现了 `Channel` 对线程中断的响应。
 
-接下来重点就是研究“Thread添加中断处理逻辑”这个机制是如何实现的了，是通过blockedOn方法实现的：
+接下来重点是研究“`Thread` 添加中断处理逻辑”这个机制是如何实现的，它是通过 `blockedOn` 方法实现的：
 
 ```java
 static void blockedOn(Interruptible intr) {         // package-private
@@ -135,11 +138,11 @@ static void blockedOn(Interruptible intr) {         // package-private
 }
 ```
 
-blockedOn方法使用的是JavaLangAccess的blockedOn方法。
+`blockedOn` 方法使用的是 `JavaLangAccess` 的 `blockedOn` 方法。
 
-SharedSecrets是一个神奇而糟糕的类，为啥说是糟糕呢，因为这个方法的存在，就是为了访问JDK类库中一些因为类作用域限制而外部无法访问的类或者方法。JDK很多类与方法是私有或者包级别私有的，外部是无法访问的，但是JDK在本身实现的时候又存在互相依赖的情况，所以为了外部可以不依赖反射访问这些类或者方法，在sun包下，存在这么一个类，提供了各种超越限制的方法。
+`SharedSecrets` 是一个既神奇又糟糕的类。之所以说它糟糕，是因为这个方法的存在，正是为了访问 JDK 类库中一些由于类作用域限制而外部无法访问的类或方法。许多 JDK 中的类和方法是私有的或包级别私有的，外部无法直接访问。但是 JDK 在实现过程中，类与类之间往往存在相互依赖的情况。为了避免外部依赖反射来访问这些类或方法，在 `sun` 包下，存在这样一个类，提供了超越访问限制的方法。
 
-SharedSecrets.getJavaLangAccess()方法返回JavaLangAccess对象。JavaLangAccess对象就和名称所说的一样，提供了java.lang包下一些非公开的方法的访问。这个类在System初始化时被构造：
+`SharedSecrets.getJavaLangAccess()` 方法返回一个 `JavaLangAccess` 对象。正如其名称所示，`JavaLangAccess` 提供了对 `java.lang` 包下某些非公开方法的访问。这个类在 `System` 初始化时被构造。
 
 ```java
  // java.lang.System#setJavaLangAccess
@@ -155,7 +158,7 @@ SharedSecrets.getJavaLangAccess()方法返回JavaLangAccess对象。JavaLangAcce
  }
 ```
 
-可以看出，sun.misc.JavaLangAccess#blockedOn保证的就是java.lang.Thread#blockedOn这个包级别私有的方法：
+可以看出，`sun.misc.JavaLangAccess#blockedOn`保证的就是`java.lang.Thread#blockedOn`这个包级别私有的方法：
 
 ```java
 /* The object in which this thread is blocked in an interruptible I/O
@@ -176,9 +179,9 @@ void blockedOn(Interruptible b) {
 }
 ```
 
-而这个方法也非常简单，就是设置java.lang.Thread#blocker变量为之前提到的中断处理对象。而且从注释中可以看出，这个方法就是专门为NIO设计的，注释都非常直白的提到了，NIO的代码会通过sun.misc.SharedSecrets调用到这个方法。。
+这个方法非常简单，它的作用就是设置 `java.lang.Thread#blocker` 变量为之前提到的中断处理对象。从注释中可以看出，这个方法专门为 NIO 设计，注释明确指出，NIO 的代码会通过 `sun.misc.SharedSecrets` 调用这个方法。
 
-接下来就是重头戏了，看一下Thread在中断时，如何调用NIO注册的中断处理器：
+接下来是重头戏，我们来看看**当 `Thread` 被中断时，如何调用 NIO 注册的中断处理器**：
 
 ```java
 public void interrupt() {
@@ -213,7 +216,9 @@ public void interrupt() {
 
 #### end方法
 
-begin()方法负责添加Channel的中断处理器到当前线程。end()是在IO操作执行完/中断完后的操作，负责判断中断是否发生，如果发生判断是当前线程发生还是别的线程中断把当前操作的Channel给关闭了，对于不同的情况，抛出不同的异常。
+`begin()` 方法负责将 `Channel` 的中断处理器添加到当前线程。
+
+`end()` 方法是在 IO 操作执行完或被中断后的操作，它负责判断是否发生了中断。如果发生了中断，会检查是当前线程发生的中断，还是其他线程中断了当前操作的 `Channel`。根据不同的情况，`end()` 方法会抛出不同的异常。
 
 ```java
 protected final void end(boolean completed) throws AsynchronousCloseException
@@ -231,29 +236,29 @@ protected final void end(boolean completed) throws AsynchronousCloseException
 }
 ```
 
-通过代码可以看出，如果是当前线程被中断，则抛出ClosedByInterruptException异常，表示Channel因为线程中断而被关闭了，IO操作也随之中断了。
+通过代码可以看出，如果是当前线程被中断，则会抛出 `ClosedByInterruptException` 异常，表示 `Channel` 因为线程中断而被关闭，IO 操作也随之中断。
 
-如果是当前线程发现Channel被关闭了，并且是读取还未执行完毕的情况，则抛出AsynchronousCloseException异常，表示Channel被异步关闭了。
+如果是当前线程发现 `Channel` 被关闭了，并且是在读取尚未执行完毕的情况下，则会抛出 `AsynchronousCloseException` 异常，表示 `Channel` 被异步关闭。
 
-end()逻辑的活动图如下：
+`end()` 逻辑的活动图如下：
 
 <img src="https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202411032047284.png" alt="image-20241103204753221" style="zoom:67%;" />
 
 #### 场景分析
 
-并发的场景分析起来就是复杂，上面的代码不多，但是场景很多，我们以sun.nio.ch.FileChannelImpl#read(java.nio.ByteBuffer)为例分析一下可能的场景：
+并发场景的分析是复杂的，尽管上述代码不多，但场景非常多。我们以 `sun.nio.ch.FileChannelImpl#read(java.nio.ByteBuffer)` 为例来分析一下可能的场景：
 
-1. A线程read，B线程中断A线程：A线程抛出ClosedByInterruptException异常
+1. **A线程进行 `read`，B线程中断A线程：**
+   A线程抛出 `ClosedByInterruptException` 异常，表示 `Channel` 因线程中断而被关闭，IO 操作中断。
+2. **A、B线程同时进行 `read`，C线程中断A线程：**
+   - **A被中断时，B刚刚进入 `read` 方法：**
+     A线程抛出 `ClosedByInterruptException` 异常，B线程在执行 `ensureOpen` 方法时抛出 `ClosedChannelException` 异常，表示 `Channel` 已关闭。
+   - **A被中断时，B阻塞在底层 `read` 方法中：**
+     A线程抛出 `ClosedByInterruptException` 异常，B线程在底层方法中抛出异常并返回，`end` 方法中会抛出 `AsynchronousCloseException` 异常，表示 `Channel` 被异步关闭。
+   - **A被中断时，B已经读取到数据：**
+     A线程抛出 `ClosedByInterruptException` 异常，B线程正常返回。
 
-2. A，B线程read，C线程中断A线程
-
-   - A被中断时，B刚刚进入read方法：A线程抛出ClosedByInterruptException异常，B线程ensureOpen方法抛出ClosedChannelException异常
-
-   - A被中断时，B阻塞在底层read方法中：A线程抛出ClosedByInterruptException异常，B线程底层方法抛出异常返回，end方法中抛出AsynchronousCloseException异常
-
-   - A被中断时，B已经读取到数据：A线程抛出ClosedByInterruptException异常，B线程正常返回
-
-sun.nio.ch.FileChannelImpl#read(java.nio.ByteBuffer)代码如下：
+`sun.nio.ch.FileChannelImpl#read(java.nio.ByteBuffer)` 的代码如下：
 
 ```java
 public int read(ByteBuffer dst) throws IOException {
@@ -393,11 +398,62 @@ public SocketChannel accept() throws IOException {
 
 #### 总结
 
-在JavaIO时期，人们为了中断IO操作想了不少方法，核心操作就是关闭流，促使IO操作抛出异常，达到中断IO的效果。NIO中，将这个操作植入了java.lang.Thread#interrupt方法，免去用户自己编码特定代码的麻烦。使IO操作可以像其他可中断方法一样，在中断时抛出ClosedByInterruptException异常，业务程序捕获该异常即可对IO中断做出响应。
+在 Java IO 时代，为了中断 IO 操作，人们想了不少方法，核心操作就是关闭流，从而促使 IO 操作抛出异常，达到中断 IO 的效果。
+
+::: code-group
+
+```java [关闭流来中断 IO 操作]
+InputStream inputStream = ...;
+Thread interruptThread = new Thread(() -> {
+    // 在某些条件下中断流
+    inputStream.close();
+});
+interruptThread.start();
+
+try {
+    int data = inputStream.read();  // 阻塞操作
+} catch (IOException e) {
+    // 捕获异常，处理中断
+}
+```
+```java [使用 Thread.interrupt() 中断线程]
+InputStream inputStream = ...;
+
+Thread interruptThread = new Thread(() -> {
+    // 在某些条件下中断线程
+    Thread.currentThread().interrupt();
+});
+interruptThread.start();
+
+try {
+    while (!Thread.interrupted()) {
+        int data = inputStream.read();
+        // 进行IO操作
+    }
+} catch (IOException e) {
+    // 捕获异常，处理中断
+}
+```
+```java [通过超时控制实现中断]
+Socket socket = new Socket();
+socket.setSoTimeout(5000);  // 设置5秒超时
+
+try {
+    socket.getInputStream().read();  // 可能会阻塞
+} catch (SocketTimeoutException e) {
+    // 捕获超时异常，表示IO被中断
+}
+
+```
+
+
+:::
+
+而在 NIO 中，这个操作被集成到了 `java.lang.Thread#interrupt` 方法中，免去了用户编写特定代码的麻烦。这样，IO 操作可以像其他可中断的方法一样，在中断时抛出 `ClosedByInterruptException` 异常，业务程序只需捕获该异常，就能对 IO 中断做出响应。
 
 ### SelectableChannel
 
-`SelectableChannel`接口声明了Channel是可以被选择的，在Windows平台通过`WindowsSelectorImpl`实现，Linux通过`EPollSelectorImpl`实现。此外还有`KQueue`等实现，关于`Selector`具体细节在[《Selector》](/netty_source_code_parsing/nio/Selector)一文中会介绍。
+`SelectableChannel`接口声明了Channel是可以被选择的，在Windows平台通过`WindowsSelectorImpl`实现，Linux通过`EPollSelectorImpl`实现。此外还有`KQueue`等实现，关于`Selector`具体细节在[《Selector 源码分析》](/netty_source_code_parsing/nio/Selector)一文中会介绍。
 
 `AbstractSelectableChannel`实现了`SelectableChannel`接口。
 
@@ -461,7 +517,7 @@ public interface SelChImpl extends Channel {
 
 ### ReadableByteChannel&WritableByteChannel
 
-由于UDP支持读写数据，因此还实现了`ReadableByteChannel`和`WritableByteChannel`接口
+由于 UDP 支持读写数据，因此还实现了`ReadableByteChannel`和`WritableByteChannel`接口
 
 ```Java
 public interface ReadableByteChannel extends Channel {
@@ -517,7 +573,7 @@ TCP 协议除了不支持组播，其他和 UDP 是一样的,不再重复介绍�
 
 文件比网络协议少了`NetworkChannel`、`SelChImpl`和`SelectableChannel`。`SelChImpl`和`SelectableChannel`主要是用于支持选择器的，由于网络传输大多数连接时空闲的，而且数据何时会到来并不知晓，同时需要支持高并发来连接，因此支持多路复用技术可以显著的提高性能，而磁盘读写则没有该需求，因此无需选择器。
 
-`SeekableByteChannel`可以通过修改position支持从指定位置读写数据。
+`SeekableByteChannel`可以通过修改 `position` 支持从指定位置读写数据。
 
 ```Java
 public interface SeekableByteChannel extends ByteChannel {

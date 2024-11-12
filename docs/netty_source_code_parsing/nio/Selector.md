@@ -16,7 +16,7 @@
 
 :::
 
-### 创建Selector
+## 创建 Selector
 
 首先我们需要通过静态方法`Selector.open()`从创建一个`Selector`。
 
@@ -26,7 +26,7 @@ Selector selector = Selector.open();
 
 需要注意的是，Channel必须是非阻塞的，我们需要手动将Channel设置为非阻塞。调用`Channel`的实例方法`SelectableChannel.configureBlocking(boolean block)`。
 
-### 注册通道
+## 注册 Channel
 
 需要告诉Selector监控哪些`Channel`，通过`channel.register`将需要监控的通道注册到`Selector`中
 
@@ -118,7 +118,7 @@ private void addKey(SelectionKey k) {
  
 ```
 
-### SelectorProvider
+## SelectorProvider
 
 在讨论Selector如何工作之前，我们先看一下Selector是如何创建的。我们通过`Selector.open()`静态方法创建了一个`Selector`。内部实际是通过`SelectorProvider.openSelector()`方法创建`Selector`。
 
@@ -128,7 +128,7 @@ public static Selector open() throws IOException {
 }
 ```
 
-#### 创建SelectorProvider
+### 创建 SelectorProvider
 
 通过`SelectorProvider.provider()`静态方法，获取到`SelectorProvider`，首次获取时会通过配置等方式注入，若没有配置，则使用`DefaultSelectorProvider`生成。
 
@@ -198,7 +198,7 @@ public class DefaultSelectorProvider {
 }
 ```
 
-#### 创建Selector
+### 创建 Selector
 
 获取到`SelectorProvider`后，创建`Selector`了。通过`SelectorProvider.openSelector()`实例方法创建一个`Selector`
 

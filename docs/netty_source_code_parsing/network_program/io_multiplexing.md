@@ -1,6 +1,6 @@
 # IO 多路复用
 
-::: info 转载自
+::: tip 转载自
 
 [深入学习IO多路复用 select/poll/epoll 实现原理](https://mp.weixin.qq.com/s/5xj42JPKG8o5T7hjXIKywg) 作者：mingguangtu，腾讯 IEG 后台开发工程师
 

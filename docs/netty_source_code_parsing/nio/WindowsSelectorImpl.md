@@ -429,7 +429,7 @@ protected int doSelect(long timeout) throws IOException {
 }
 ```
 
-1. 删除取消key,当channel关闭时，对应的Key会被取消,被取消的key会加入到`cancelledKeys`中。
+1. **删除取消key,当channel关闭时，对应的Key会被取消,被取消的key会加入到`cancelledKeys`中。**
 
 ```java
 protected final void implCloseChannel() throws IOException {
@@ -541,7 +541,7 @@ protected final void deregister(AbstractSelectionKey key) {
 
 `((SelChImpl)selch).kill();`是在各个Channel中实现的，以SocketChannel为例,最终会调用`nd.close(fd);`关闭对应的文件描述符
 
-1. 调整辅助线程数
+2. **调整辅助线程数**
 
 ```java
 private void adjustThreadsCount() {
@@ -621,7 +621,7 @@ private synchronized boolean waitForStart(SelectThread thread) {
 }
 ```
 
-1. 设置辅助线程数量
+3. **设置辅助线程数量**
 
 记录当前辅助线程数量，下次新增的辅助线程需要等待主线程通知启动。
 
@@ -632,7 +632,7 @@ private void reset() {
 }
 ```
 
-1. 开始运行新增的辅助线程
+4. **开始运行新增的辅助线程**
 
 ```java
 startLock.startThreads();
@@ -642,7 +642,7 @@ private synchronized void startThreads() {
 }
 ```
 
-1. 获取已就绪的文件描述符
+5. **获取已就绪的文件描述符**
 
 ```java
 subSelector.poll();
@@ -853,8 +853,9 @@ Java_sun_nio_ch_WindowsSelectorImpl_resetWakeupSocket0(JNIEnv *env, jclass this,
 
 > [ioctlsocket()](https://baike.baidu.com/item/ioctlsocket()/10082038?fr=aladdin)是一个计算机函数，功能是控制套接口的模式。可用于任一状态的任一套接口。它用于获取与套接口相关的操作参数，而与具体协议或通讯子系统无关。第二个参数时对socket的操作命令
 
-1. 再次调用删除取消的key
-2. 将就绪的key加入到selectKeys中,有多个线程会将所有线程的就绪key加入到selectKeys中。
+6. **再次调用删除取消的key**
+
+7. **将就绪的key加入到selectKeys中,有多个线程会将所有线程的就绪key加入到selectKeys中。**
 
 ```java
 int updated = updateSelectedKeys();

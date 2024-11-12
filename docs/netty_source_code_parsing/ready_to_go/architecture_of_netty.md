@@ -16,19 +16,19 @@
 
 ## Netty 整体结构
 
-Netty 是一个设计非常用心的**网络基础组件**，  [Netty 官网 ](https://netty.io/) 首页大图中给出了有关 Netty 的整体功能模块结构。我们可以清晰地看出 Netty 结构一共分为三个模块：
+Netty 是一个设计非常用心的**网络基础组件**， [Netty 官网 ](https://netty.io/) 首页大图中给出了有关 Netty 的整体功能模块结构。我们可以清晰地看出 Netty 结构一共分为三个模块：
 
 ![img](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/components.png)
 
-* **Core 核心层**
+- **Core 核心层**
 
 Core 核心层是 Netty 最精华的内容，它提供了底层网络通信的通用抽象和实现，包括可扩展的事件模型、通用的通信 API、支持零拷贝的 ByteBuf 等。
 
-* **Protocol Support 协议支持层**
+- **Protocol Support 协议支持层**
 
 协议支持层基本上覆盖了主流协议的编解码实现，如 HTTP、SSL、Protobuf、压缩、大文件传输、WebSocket、文本、二进制等主流协议，此外 Netty 还支持自定义应用层协议。Netty 丰富的协议支持降低了用户的开发成本，基于 Netty 我们可以快速开发 HTTP、WebSocket 等服务。
 
-* **Transport Service 传输服务层**
+- **Transport Service 传输服务层**
 
 传输服务层提供了网络传输能力的定义和实现方法。它支持 Socket、HTTP 隧道、虚拟机管道等传输方式。Netty 对 TCP、UDP 等数据传输做了抽象和封装，用户可以更聚焦在业务逻辑实现上，而不必关系底层数据传输的细节。
 
@@ -38,11 +38,11 @@ Netty 的模块设计具备较高的**通用性和可扩展性**，它不仅是�
 
 ### Netty 逻辑架构
 
-下图是 Netty 的逻辑处理架构。Netty 的逻辑处理架构为典型网络分层架构设计，共分为**网络通信层、启动引导层、事件调度层、服务编排层**，每一层各司其职。图中包含了 Netty 每一层所用到的核心组件。在本教程第二部分我将为您讲述 Netty 的每个逻辑分层中的各个核心组件以及组件之间是如何协调运作的。
+下图是 Netty 的逻辑处理架构。Netty 的逻辑处理架构为典型网络分层架构设计，共分为**网络通信层、启动引导层、事件调度层、服务编排层**，每一层各司其职。图中包含了 Netty 每一层所用到的核心组件。在本教程第三部分我将为您讲述 Netty 的每个逻辑分层中的各个核心组件以及组件之间是如何协调运作的。
 
 下面先来简单看一下
 
-![image-20241031110527354](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410311105507.png?x-oss-process=image/watermark,image_aW1nL3dhdGVyLnBuZw==,g_nw,x_1,y_1)
+<img src="https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202411121039277.png?x-oss-process=image/watermark,image_aW1nL3dhdGVyLnBuZw==,g_nw,x_1,y_1" alt="image-20241112103919098" style="zoom: 33%;" />
 
 ---
 
@@ -50,15 +50,15 @@ Netty 的模块设计具备较高的**通用性和可扩展性**，它不仅是�
 
 #### 网络通信层
 
-![image-20241031110740351](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410311107453.png?x-oss-process=image/watermark,image_aW1nL3dhdGVyLnBuZw==,g_nw,x_1,y_1)
+<img src="https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202411121041526.png?x-oss-process=image/watermark,image_aW1nL3dhdGVyLnBuZw==,g_nw,x_1,y_1" alt="image-20241112104103466" style="zoom: 33%;" />
 
 网络通信层的职责是执行网络 I/O 的操作。它支持多种网络协议和 I/O 模型的连接操作。当网络数据读取到内核缓冲区后，会触发各种网络事件，这些网络事件会分发给事件调度层进行处理。
 
-网络通信层的**核心组件**包含Selector Channel Buffer 三个组件。
+网络通信层的**核心组件**包含 Selector Channel Buffer 三个组件。
 
-- **Channel**
+我们在这简单介绍下 Channel
 
-Channel 的字面意思是“通道”，它是网络通信的载体。Channel提供了基本的 API 用于网络 I/O 操作，如 register、bind、connect、read、write、flush 等。Netty 自己实现的 Channel 是以 JDK NIO Channel 为基础的，相比较于 JDK NIO，Netty 的 Channel 提供了更高层次的抽象，同时屏蔽了底层 Socket 的复杂性，赋予了 Channel 更加强大的功能，你在使用 Netty 时基本不需要再与 Java Socket 类直接打交道。
+Channel 的字面意思是“通道”，它是网络通信的载体。Channel 提供了基本的 API 用于网络 I/O 操作，如 register、bind、connect、read、write、flush 等。Netty 自己实现的 Channel 是以 JDK NIO Channel 为基础的，相比较于 JDK NIO，Netty 的 Channel 提供了更高层次的抽象，同时屏蔽了底层 Socket 的复杂性，赋予了 Channel 更加强大的功能，你在使用 Netty 时基本不需要再与 Java Socket 类直接打交道。
 
 下图是 Channel 家族的图谱。AbstractChannel 是整个家族的基类，派生出 AbstractNioChannel、AbstractOioChannel、AbstractEpollChannel 等子类，每一种都代表了不同的 I/O 模型和协议类型。常用的 Channel 实现类有：
 
@@ -82,7 +82,7 @@ Channel 的字面意思是“通道”，它是网络通信的载体。Channel�
 
 #### 启动引导层
 
-![image-20241031110754027](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410311107078.png?x-oss-process=image/watermark,image_aW1nL3dhdGVyLnBuZw==,g_nw,x_1,y_1)
+<img src="https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202411121041972.png?x-oss-process=image/watermark,image_aW1nL3dhdGVyLnBuZw==,g_nw,x_1,y_1" alt="image-20241112104123930" style="zoom:33%;" />
 
 - **BootStrap & ServerBootStrap**
 
@@ -100,7 +100,7 @@ ServerBootStrap 中的 Boss 和 Worker 是什么角色呢？它们之间又是�
 
 #### 事件调度层
 
-![image-20241031110814641](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410311108704.png?x-oss-process=image/watermark,image_aW1nL3dhdGVyLnBuZw==,g_nw,x_1,y_1)
+<img src="https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202411121041892.png?x-oss-process=image/watermark,image_aW1nL3dhdGVyLnBuZw==,g_nw,x_1,y_1" alt="image-20241112104139822" style="zoom:33%;" />
 
 事件调度层的职责是通过 Reactor 线程模型对各类事件进行聚合处理，通过 Selector 主循环线程集成多种事件（ I/O 事件、信号事件、定时事件等），实际的业务处理逻辑是交由服务编排层中相关的 Handler 完成。
 
@@ -110,7 +110,7 @@ ServerBootStrap 中的 Boss 和 Worker 是什么角色呢？它们之间又是�
 
 EventLoopGroup 本质是一个线程池，主要负责接收 I/O 请求，并分配线程执行处理请求。在下图中，我为你讲述了 EventLoopGroups、EventLoop 与 Channel 的关系。
 
-![1231321](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/1231321.png)
+<img src="https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202411121042812.png?x-oss-process=image/watermark,image_aW1nL3dhdGVyLnBuZw==,g_nw,x_1,y_1" alt="image-20241112104230680" style="zoom:50%;" />
 
 从上图中，我们可以总结出 EventLoopGroup、EventLoop、Channel 的几点关系。
 
@@ -126,15 +126,15 @@ EventLoopGroup 的实现类是 NioEventLoopGroup，NioEventLoopGroup 也是 Nett
 
 EventLoopGroup 是 Netty 的核心处理引擎，那么 EventLoopGroup 和之前课程所提到的 Reactor 线程模型到底是什么关系呢？其实 EventLoopGroup 是 Netty Reactor 线程模型的具体实现方式，Netty 通过创建不同的 EventLoopGroup 参数配置，就可以支持 Reactor 的三种线程模型：
 
-1. **单线程模型**：EventLoopGroup 只包含一个 EventLoop，Boss 和 Worker 使用同一个EventLoopGroup；
-2. **多线程模型**：EventLoopGroup 包含多个 EventLoop，Boss 和 Worker 使用同一个EventLoopGroup；
+1. **单线程模型**：EventLoopGroup 只包含一个 EventLoop，Boss 和 Worker 使用同一个 EventLoopGroup；
+2. **多线程模型**：EventLoopGroup 包含多个 EventLoop，Boss 和 Worker 使用同一个 EventLoopGroup；
 3. **主从多线程模型**：EventLoopGroup 包含多个 EventLoop，Boss 是主 Reactor，Worker 是从 Reactor，它们分别使用不同的 EventLoopGroup，主 Reactor 负责新的网络连接 Channel 创建，然后把 Channel 注册到从 Reactor。
 
 在介绍完事件调度层之后，可以说 Netty 的发动机已经转起来了，事件调度层负责监听网络连接和读写操作，然后触发各种类型的网络事件，需要一种机制管理这些错综复杂的事件，并有序地执行，接下来我们便一起学习 Netty 服务编排层中核心组件的职责。
 
 #### 服务编排层
 
-![image-20241031112436333](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410311124395.png?x-oss-process=image/watermark,image_aW1nL3dhdGVyLnBuZw==,g_nw,x_1,y_1)
+<img src="https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202411121043786.png?x-oss-process=image/watermark,image_aW1nL3dhdGVyLnBuZw==,g_nw,x_1,y_1" alt="image-20241112104308702" style="zoom:33%;" />
 
 服务编排层的职责是负责组装各类服务，它是 Netty 的核心处理链，用以实现网络事件的动态编排和有序传播。
 
@@ -148,9 +148,7 @@ ChannelPipeline 是线程安全的，因为每一个新的 Channel 都会对应�
 
 ChannelPipeline、ChannelHandler 都是高度可定制的组件。开发者可以通过这两个核心组件掌握对 Channel 数据操作的控制权。下面我们看一下 ChannelPipeline 的结构图：
 
-![image-20241029161206900](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/image-20241029161206900.png)
-
-
+<img src="https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202411121043288.png?x-oss-process=image/watermark,image_aW1nL3dhdGVyLnBuZw==,g_nw,x_1,y_1" alt="image-20241112104346187" style="zoom:33%;" />
 
 从上图可以看出，ChannelPipeline 中包含入站 ChannelInboundHandler 和出站 ChannelOutboundHandler 两种处理器，我们结合客户端和服务端的数据收发流程来理解 Netty 的这两个概念。
 
@@ -160,9 +158,9 @@ ChannelPipeline、ChannelHandler 都是高度可定制的组件。开发者可�
 
 在介绍 ChannelPipeline 的过程中，想必你已经对 ChannelHandler 有了基本的概念，数据的编解码工作以及其他转换工作实际都是通过 ChannelHandler 处理的。站在开发者的角度，最需要关注的就是 ChannelHandler，我们很少会直接操作 Channel，都是通过 ChannelHandler 间接完成。
 
-下图描述了 Channel 与 ChannelPipeline 的关系，从图中可以看出，每创建一个 Channel 都会绑定一个新的 ChannelPipeline，ChannelPipeline 中每加入一个 ChannelHandler 都会绑定一个 ChannelHandlerContext。由此可见，ChannelPipeline、ChannelHandlerContext、ChannelHandler 三个组件的关系是密切相关的，那么你一定会有疑问，每个 ChannelHandler 绑定ChannelHandlerContext 的作用是什么呢？
+下图描述了 Channel 与 ChannelPipeline 的关系，从图中可以看出，每创建一个 Channel 都会绑定一个新的 ChannelPipeline，ChannelPipeline 中每加入一个 ChannelHandler 都会绑定一个 ChannelHandlerContext。由此可见，ChannelPipeline、ChannelHandlerContext、ChannelHandler 三个组件的关系是密切相关的，那么你一定会有疑问，每个 ChannelHandler 绑定 ChannelHandlerContext 的作用是什么呢？
 
-![image-20241029161939103](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/image-20241029161939103.png)
+<img src="https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202411121045134.png?x-oss-process=image/watermark,image_aW1nL3dhdGVyLnBuZw==,g_nw,x_1,y_1" alt="image-20241112104532073" style="zoom: 50%;" />
 
 ChannelHandlerContext 用于保存 ChannelHandler 上下文，通过 ChannelHandlerContext 我们可以知道 ChannelPipeline 和 ChannelHandler 的关联关系。ChannelHandlerContext 可以实现 ChannelHandler 之间的交互，ChannelHandlerContext 包含了 ChannelHandler 生命周期的所有事件，如 connect、bind、read、flush、write、close 等。此外，你可以试想这样一个场景，如果每个 ChannelHandler 都有一些通用的逻辑需要实现，没有 ChannelHandlerContext 这层模型抽象，你是不是需要写很多相同的代码呢？
 
@@ -172,7 +170,7 @@ ChannelHandlerContext 用于保存 ChannelHandler 上下文，通过 ChannelHand
 
 当你了解每个 Netty 核心组件的概念后。你会好奇这些组件之间如何协作？结合客户端和服务端的交互流程，我画了一张图，为你完整地梳理一遍 Netty 内部逻辑的流转。
 
-![image-20241031112629666](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410311126962.png?x-oss-process=image/watermark,image_aW1nL3dhdGVyLnBuZw==,g_ne,x_1,y_1)
+![image-20241112104617295](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202411121046551.png?x-oss-process=image/watermark,image_aW1nL3dhdGVyLnBuZw==,g_nw,x_1,y_1)
 
 - 服务端启动初始化时有 Boss EventLoopGroup 和 Worker EventLoopGroup 两个组件，其中 Boss 负责监听网络连接事件。当有新的网络连接事件到达时，则将 Channel 注册到 Worker EventLoopGroup。
 - Worker EventLoopGroup 会被分配一个 EventLoop 负责处理该 Channel 的读写事件。每个 EventLoop 都是单线程的，通过 Selector 进行事件循环。
@@ -186,7 +184,7 @@ ChannelHandlerContext 用于保存 ChannelHandler 上下文，通过 ChannelHand
 
 Netty 源码分为多个模块，模块之间职责划分非常清楚。如同上文整体功能模块一样，Netty 源码模块的划分也是基本契合的。
 
-![image-20241029171548553](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/image-20241029171548553.png)
+<img src="https://echo798.oss-cn-shenzhen.aliyuncs.com/img/image-20241029171548553.png" alt="image-20241029171548553" style="zoom:50%;" />
 
 我们不仅可以使用 Netty all-in-one 的 Jar 包，也可以单独使用其中某些工具包。下面我根据 Netty 的分层结构以及实际的业务场景具体介绍 Netty 中常用的工具包。
 
@@ -197,7 +195,7 @@ Netty 源码分为多个模块，模块之间职责划分非常清楚。如同�
 - 通用工具类：比如定时器工具 TimerTask、时间轮 HashedWheelTimer 等。
 - 自定义并发包：比如异步模型 Future & Promise、相比 JDK 增强的 FastThreadLocal 等。
 
-在 **netty-buffer 模块中**Netty自己实现了的一个更加完备的 **ByteBuf 工具类**，用于网络通信中的数据载体。由于人性化的 Buffer API 设计，它已经成为 Java ByteBuffer 的完美替代品。ByteBuf 的动态性设计不仅解决了 ByteBuffer 长度固定造成的内存浪费问题，而且更安全地更改了 Buffer 的容量。此外 Netty 针对 ByteBuf 做了很多优化，例如缓存池化、减少数据拷贝的 CompositeByteBuf 等。
+在 **netty-buffer 模块中**Netty 自己实现了的一个更加完备的 **ByteBuf 工具类**，用于网络通信中的数据载体。由于人性化的 Buffer API 设计，它已经成为 Java ByteBuffer 的完美替代品。ByteBuf 的动态性设计不仅解决了 ByteBuffer 长度固定造成的内存浪费问题，而且更安全地更改了 Buffer 的容量。此外 Netty 针对 ByteBuf 做了很多优化，例如缓存池化、减少数据拷贝的 CompositeByteBuf 等。
 
 **netty-resover**模块主要提供了一些有关**基础设施**的解析工具，包括 IP Address、Hostname、DNS 等。
 
@@ -213,7 +211,7 @@ Netty 源码分为多个模块，模块之间职责划分非常清楚。如同�
 
 netty-transport 模块可以说是 Netty 提供数据**处理和传输的核心模块**。该模块提供了很多非常重要的接口，如 Bootstrap、Channel、ChannelHandler、EventLoop、EventLoopGroup、ChannelPipeline 等。其中 Bootstrap 负责客户端或服务端的启动工作，包括创建、初始化 Channel 等；EventLoop 负责向注册的 Channel 发起 I/O 读写操作；ChannelPipeline 负责 ChannelHandler 的有序编排，这些组件在介绍 Netty 逻辑架构的时候都有所涉及。
 
-以上只介绍了 Netty 常用的功能模块，还有很多模块就不一一列举了，有兴趣的同学可以在其 [代码仓库](https://github.com/netty/netty )  查询 Netty 的源码。
+以上只介绍了 Netty 常用的功能模块，还有很多模块就不一一列举了，有兴趣的同学可以在其 [代码仓库](https://github.com/netty/netty) 查询 Netty 的源码。
 
 ## 总结
 

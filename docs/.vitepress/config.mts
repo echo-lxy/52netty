@@ -110,7 +110,7 @@ export default defineConfig({
             ],
           },
           {
-            text: "番外：JDK NIO 系列教程",
+            text: "第二部分：JDK NIO 系列教程",
             collapsed: true,
             items: [
               {
@@ -163,7 +163,7 @@ export default defineConfig({
             ],
           },
           {
-            text: "第二部分：主线任务",
+            text: "第三部分：主线任务",
             collapsed: true,
             items: [
               {
@@ -242,7 +242,7 @@ export default defineConfig({
             ],
           },
           {
-            text: "第三部分：内存管理机制",
+            text: "第四部分：内存管理机制",
             collapsed: true,
             items: [
               {
@@ -274,7 +274,7 @@ export default defineConfig({
             ],
           },
           {
-            text: "第四部分：其他源码分析",
+            text: "第五部分：其他源码分析",
             collapsed: true,
             items: [
               {
@@ -296,7 +296,7 @@ export default defineConfig({
             ],
           },
           {
-            text: "第五部分：其他特性",
+            text: "第六部分：其他特性",
             collapsed: true,
             items: [
               {

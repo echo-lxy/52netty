@@ -2,7 +2,7 @@
 
 ## ServerSocketChannelImpl
 
-<img src="https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202411022238923.png" alt="image-20241102223824733" style="zoom: 33%;" />
+<img src="https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202411022238923.png" alt="image-20241102223824733" style="zoom: 25%;" />
 
 ### 创建 ServerSocketChannel
 
@@ -380,12 +380,12 @@ public SocketChannel accept() throws IOException {
 
 <img src="https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202411022253740.png" alt="image-20241102225321646" style="zoom: 33%;" />
 
-- SocketChannel会有一个state标记当前的状态，默认为-1表示ST_UNINITIALIZED(未初始化)
-- 在构造函数最后会将state更新为0(ST_UNCONNECTED,未连接)
-- 调用connect连接服务端，连接成功之前更新state为1(ST_PENDING,待连接)
-- 连接成功时会更新state为2(ST_CONNECTED,已连接)
-- 关闭通道时若I/O未完成时会将state更新为3(ST_KILLPENDING,待释放)
-- 当关闭通道后，且所有I/O已完成，会将state更新为4(ST_KILLED,已释放)
+- `SocketChannel` 会有一个 `state` 标记当前的状态，默认为 `-1`，表示 `ST_UNINITIALIZED`（未初始化）。
+- 在构造函数最后，会将 `state` 更新为 `0`，表示 `ST_UNCONNECTED`（未连接）。
+- 调用 `connect` 连接服务端时，连接成功之前，`state` 会更新为 `1`，表示 `ST_PENDING`（待连接）。
+- 连接成功时，`state` 会更新为 `2`，表示 `ST_CONNECTED`（已连接）。
+- 关闭通道时，如果 I/O 未完成，`state` 会更新为 `3`，表示 `ST_KILLPENDING`（待释放）。
+- 当关闭通道后，且所有 I/O 已完成，`state` 会更新为 `4`，表示 `ST_KILLED`（已释放）。
 
 ### 创建SocketChannel
 

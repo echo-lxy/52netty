@@ -2,7 +2,7 @@
 
 ## 前言
 
-请在阅读本文之前，务必先阅读[《Buffer 源码解析》]()。
+请在阅读本文之前，务必先阅读[《Buffer 源码解析》](/netty_source_code_parsing/nio/Buffer)。
 
 对于 `ByteBuffer` 而言，有两个较为特殊的类：`DirectByteBuffer` 和 `MappedByteBuffer`，这两个类的原理都是基于内存文件映射的。
 

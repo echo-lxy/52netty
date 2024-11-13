@@ -136,7 +136,7 @@ public final FileChannel getChannel() {
 
 ## FileChannelImpl
 
-<img src="https://img2018.cnblogs.com/blog/580757/201912/580757-20191219111347307-739752164.png" alt="20191219111345.png" style="zoom:67%;" />
+<img src="https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202411131341630.png" alt="image-20241113133803366" style="zoom:67%;" />
 
 ### 创建
 

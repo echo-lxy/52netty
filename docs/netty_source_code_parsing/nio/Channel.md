@@ -557,19 +557,19 @@ public interface GatheringByteChannel extends WritableByteChannel {
 
 ### 客户端
 
-<img src="https://img2018.cnblogs.com/blog/580757/201912/580757-20191209111549572-524670716.png" alt="20191209111550.png" style="zoom: 67%;" />
+<img src="https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202411131341305.png" alt="image-20241113134015529" style="zoom:67%;" />
 
 TCP 协议除了不支持组播，其他和 UDP 是一样的,不再重复介绍。
 
 ### 服务端
 
-<img src="https://img2018.cnblogs.com/blog/580757/201912/580757-20191209112759695-2135321136.png" alt="20191209112800.png" style="zoom: 67%;" />
+<img src="https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202411131340767.png" alt="image-20241113134030704" style="zoom: 67%;" />
 
 服务端无需数据读写，仅需要接收连接，数据读写是SocketChannel干的事。因此没有`ReadableByteChannel`、`WriteableByteChannel`等读写接口
 
 ## 文件
 
-<img src="https://img2018.cnblogs.com/blog/580757/201912/580757-20191209112004483-1940710084.png" alt="20191209112005.png" style="zoom:67%;" />
+<img src="https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202411131340728.png" alt="image-20241113134044655" style="zoom:67%;" />
 
 文件比网络协议少了`NetworkChannel`、`SelChImpl`和`SelectableChannel`。`SelChImpl`和`SelectableChannel`主要是用于支持选择器的，由于网络传输大多数连接时空闲的，而且数据何时会到来并不知晓，同时需要支持高并发来连接，因此支持多路复用技术可以显著的提高性能，而磁盘读写则没有该需求，因此无需选择器。
 

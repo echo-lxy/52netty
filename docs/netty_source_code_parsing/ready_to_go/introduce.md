@@ -24,8 +24,8 @@
 
 笔者认为整个教学的规划还是较为合理的：
 
-1. **第一部分：**简单介绍 Netty，并梳理 Netty 的整体架构
-2. **第二部分：**Java NIO 系列教程，这是基础哈
+1. **第一部分**：简单介绍 Netty，并梳理 Netty 的整体架构
+2. **第二部分**：Java NIO 系列教程，这是基础哈
 3. **第三部分（核心部分）**：我将对整个 Netty 的逻辑架构进行分层讲解
 
 <img src="https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202411121039277.png?x-oss-process=image/watermark,image_aW1nL3dhdGVyLnBuZw==,g_nw,x_1,y_1" alt="image-20241112103919098" style="zoom: 33%;" />
@@ -37,21 +37,21 @@
 
 ## 适合谁
 
-[《图解 Netty 源码》](/netty_source_code_parsing/ready_to_go/introduce)不仅仅是对 Netty 源码的解析，还深入探讨了其 **是什么、为什么、怎么用** 。我认为，相比网络上零散的 Netty 知识点，更建议你跟随 Echo 理解 Netty 的整个体系。这样在学习其他源码时，你会更加得心应手，并且具备更好的延展性。
+[《图解 Netty 源码》](/netty_source_code_parsing/ready_to_go/introduce)不仅仅是对 Netty 源码的解析，还深入探讨了其 **是什么、为什么、怎么用**。我认为，相比网络上零散的 Netty 知识点，更建议你跟随 Echo 理解 Netty 的整个体系。这样在学习其他源码时，你会更加得心应手，并且具备更好的延展性。
 
 对优秀源码的学习往往让 Java 小白感到畏惧，因为它与我们平常的编码大相径庭。所以我在本教程中融入大量简约的图片辅助学习。
 
-在阅读本书之前，希望您已经对 **操作系统、计算机网络** 和 **Java 编程语言** 有了一定的了解。
+**在阅读本书之前，希望您已经对 操作系统、计算机网络 和 Java 编程语言 有了一定的了解。**
 
 其实，在完善本站的过程中，Echo 也经历了很多迷茫，但随着日复一日的学习与总结，逐渐有种拨云见日的感觉。
 
 但我不敢保证[《图解 Netty 源码》](/netty_source_code_parsing/ready_to_go/introduce)中的所有内容都是正确的，因为我仍处于学习阶段，但我会坚持努力，争取在不久的将来，使本教程成为有关 Netty 的优质解读。
 
-**如果大家在阅读过程中发现内容不完善、不正确，或编排不合适，欢迎在本站的 GitHub 上提交 issue，任何您觉得有问题的反馈都是非常宝贵的，我会在 24 小时 内处理。**
+**如果大家在阅读过程中发现内容不完善、不正确，或编排不合适，欢迎在本站的 GitHub 上提交 issue，任何您觉得有问题的反馈都是非常宝贵的，我会在 24 小时内处理。**
 
 <img src="https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410291327748.png" alt="image-20241029132749699" style="zoom: 67%;" />
 
-另外，每篇文章末尾都有如下图所示的超链接，点击后即可对当前文章的内容进行修正，
+另外，每篇文章末尾都有如下图所示的超链接，点击后即可在 Github 上对当前文章内容进行修正，
 
 ![image-20241029132716321](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410291327346.png)
 

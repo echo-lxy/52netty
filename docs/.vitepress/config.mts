@@ -110,7 +110,7 @@ export default defineConfig({
             ],
           },
           {
-            text: "第二部分：JDK NIO 系列教程",
+            text: "第二部分：JDK NIO 专栏",
             collapsed: true,
             items: [
               {

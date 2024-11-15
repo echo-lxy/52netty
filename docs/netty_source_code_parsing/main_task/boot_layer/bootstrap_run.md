@@ -45,19 +45,24 @@ public final class EchoServer {
 }
 ```
 
-当我们创建完成主从 ReactorGroup 之后，我们要开始启动这俩，怎么启动呢，我们这里有一个启动类ServerBootstrap，我们可以看看它的类注释
+在[《BootStrap 初始化 Netty 服务》](/netty_source_code_parsing/main_task/boot_layer/bootstrap_init)中，我们完成了 主从Reactor 的初始化操作，主要就是成功构造了下述两个对象
 
-::: tip `ServerBootstrap` 源码中的类注释
+```java
+EventLoopGroup bossGroup = new NioEventLoopGroup(1);
+EventLoopGroup workerGroup = new NioEventLoopGroup();
+```
 
-`ServerBootstrap`是`Bootstrap` 的子类，提供了简化 `ServerChannel` 引导（启动）过程的方法。
+当创建主从 Reactor Group 之后，我们要开始启动这俩，Netty 提供了一个启动类`ServerBootstrap`，我们可以看看它的类注释翻译
 
-:::
+> `ServerBootstrap`是`Bootstrap` 的子类，提供了简化 `ServerChannel` 引导（启动）过程的方法。
 
 由此可见，`ServerBootstrap` 是 Netty 用于启动服务器的助手类。它提供了一系列流式方法，以配置服务器的网络层选项、线程模型和业务处理逻辑。通过 `ServerBootstrap`，用户可以轻松地设置服务器监听端口、初始化通道 (`Channel`) 以及绑定事件处理器等。
 
-<img src="https://echo798.oss-cn-shenzhen.aliyuncs.com/img/1729833767302-92f6240e-7c52-4beb-93da-a9e681e2534b.png" alt="img" style="zoom: 67%;" />
+<img src="https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202411152048133.png" alt="image-20241115204819059" style="zoom: 67%;" />
 
-本文旨在从 `ServerBootstrap` 出发，探讨其如何成功启动 **Main Reactor Group**，并将程序的触发点移交给 Reactor 线程，同时绑定我们的 TCP 服务器监听端口（将 Channel 注册到主 Reactor 线程）。在这个过程中，Netty 还大量使用了基于 Future 和 Promise 的异步编排优化。【TODO】Future 和 Promise
+本文旨在从 `ServerBootstrap` 出发，探讨其如何成功启动 **Main Reactor Group**，并将程序的触发点移交给 Reactor 线程，同时绑定我们的 TCP 服务器监听端口（将 Channel 注册到主 Reactor 线程）。在这个过程中，Netty 还大量使用了基于 Future 和 Promise 的异步编排优化。
+
+【TODO】Future 和 Promise
 
 ## ServerBootstrap 的初始化
 
@@ -65,9 +70,10 @@ public final class EchoServer {
 
 `ServerBootstrap` 的继承结构相对简单，职责分工也非常明确。
 
-`ServerBootstrap` 主要负责管理主从 Reactor 线程组的相关配置。其中，以 `child` 前缀的方法用于配置从 Reactor 线程组的相关设置。从 Reactor 线程组中的 Sub Reactor 负责管理的客户端 `NioSocketChannel` 相关配置则存储在 `ServerBootstrap` 结构中。
+`ServerBootstrap` 主要负责管理主从 Reactor 线程组的相关配置。其中，以 `child` 前缀的方法用于配置从 Reactor 线程组的相关设置。
 
-其父类 `AbstractBootstrap` 主要负责管理主 Reactor 线程组的相关配置，以及主 Reactor 线程组中的 Main Reactor 处理的服务端 `ServerSocketChannel` 相关配置管理。
+* 从 Reactor 线程组中的 Sub Reactor 负责管理的客户端 `NioSocketChannel` 相关配置则存储在 `ServerBootstrap` 结构中。
+* 其父类 `AbstractBootstrap` 主要负责管理主 Reactor 线程组的相关配置，以及主 Reactor 线程组中的 Main Reactor 处理的服务端 `ServerSocketChannel` 相关配置管理。
 
 ### 1、配置主从 Reactor 线程组
 
@@ -277,7 +283,7 @@ private ChannelFuture doBind(final SocketAddress localAddress) {
 }
 ```
 
-**Netty服务端的启动流程总体如下：**
+**Netty 服务端的启动流程总体如下：**
 
 1. 创建并初始化服务端 `NioServerSocketChannel`。
 2. 将服务端 `NioServerSocketChannel` 注册到主 Reactor 线程组中。
@@ -285,9 +291,9 @@ private ChannelFuture doBind(final SocketAddress localAddress) {
 4. 随后，`NioServerSocketChannel` 绑定端口地址。
 5. 绑定端口地址成功后，向 `NioServerSocketChannel` 对应的 pipeline 中触发传播 `ChannelActive` 事件。在 `ChannelActive` 事件回调中，向 Main Reactor 注册 `OP_ACCEPT` 事件，开始等待客户端连接。服务端启动完成。
 
-::: tip
+::: tip 注意
 
-要先将创建出来的 Socket 绑定端口地址，再去 Selector 上注册其感兴趣的事件
+先将创建出来的 Socket 绑定端口地址，再去 Selector 上注册其感兴趣的事件
 
 :::
 
@@ -295,7 +301,7 @@ private ChannelFuture doBind(final SocketAddress localAddress) {
 
 
 
-![image-20241031154643597](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410311546798.png?x-oss-process=image/watermark,image_aW1nL3dhdGVyLnBuZw==,g_nw,x_1,y_1)
+<img src="https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202411152056894.png?x-oss-process=image/watermark,image_aW1nL3dhdGVyLnBuZw==,g_nw,x_1,y_1" alt="image-20241115205606713" style="zoom: 33%;" />
 
 
 
@@ -327,7 +333,7 @@ final ChannelFuture initAndRegister() {
 
  从函数命名中可以看出，这个函数的主要任务是首先创建 `NioServerSocketChannel`，然后对其进行初始化，最后将 `NioServerSocketChannel` 注册到 Main Reactor 中。  
 
-![image-20241031154745747](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410311547797.png)
+<img src="https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410311547797.png" alt="image-20241031154745747" style="zoom:67%;" />
 
 #### 创建 NioServerSocketChannel
 
@@ -611,12 +617,11 @@ protected abstract class AbstractUnsafe implements Unsafe {
 
 ##### Reactor 线程的启动
 
-在上篇文章中，我们介绍了 `NioEventLoopGroup` 的创建过程，提到一个构造器参数 `executor`，它用于启动 Reactor 线程，类型为 `ThreadPerTaskExecutor`。
+在[《BootStrap 初始化 Netty 服务》](/netty_source_code_parsing/main_task/boot_layer/bootstrap_init)中，我们介绍了 `NioEventLoopGroup` 的创建过程，提到一个构造器参数 `executor`，它用于启动 Reactor 线程，类型为 `ThreadPerTaskExecutor`。
 
 当时我向大家抛出了一个悬念：**“Reactor 线程是何时启动的？”**
 
-现在是揭晓谜底的时候了~~
-Reactor 线程的启动是在向 Reactor 提交第一个异步任务时触发的。
+现在是揭晓谜底的时候了，Reactor 线程的启动是在向 Reactor 提交第一个异步任务时触发的。
 
 ```java
 eventLoop.execute(new Runnable() {
@@ -735,25 +740,31 @@ private void doStartThread() {
 
 <img src="https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410311553847.png?x-oss-process=image/watermark,image_aW1nL3dhdGVyLnBuZw==,g_nw,x_1,y_1" alt="image-20241031155333787" style="zoom:33%;" />
 
-这里可能有点绕，我来给大家捋一捋。还记得我们之前创建 NioEventLoop传入的Executor吗
+这里可能有点绕，我来给大家捋一捋。还记得我们之前创建 `NioEventLoop`传入的`Executor`吗
 
 ![img](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/1730007183814-ceab226e-427f-4589-a0e6-57b21f97dc20.png)
 
-此 `ThreadPerTaskExecutor` 就是个很单纯的线程池
+此 `ThreadPerTaskExecutor` 就是个很单纯的`线程池`
 
 ![img](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/1730007264753-07130959-3122-4d43-9917-2ee5aaed9699.png)
 
-在 `doStartThread()` 方法中，我们使用此 **executor** 去创建 **Reactor** 线程。之所以使用此 **executor**，笔者认为这体现了简单的代码复用和封装原则。
+在 `doStartThread()` 方法中，我们使用此 `executor` 去创建 Reactor 线程（可以把 Reactor 理解为子线程）。之所以使用此 `executor`，笔者认为这体现了简单的代码复用和封装原则。
 
-此时，**Reactor** 线程已经启动，**后续的工作全部由这个 Reactor 线程来负责执行**。
+此时，Reactor 线程已经启动，**后续的工作全部由这个 Reactor 线程来负责执行**。
 
-用户启动线程在向 **Reactor** 提交完 `NioServerSocketChannel` 的注册任务 `register0` 后，逐步退出调用堆栈，回退到最初的启动入口处：`ChannelFuture f = b.bind(PORT).sync()`。
+::: tip 加深理解
 
-此时，**Reactor** 中的任务队列中只有一个任务 `register0`。**Reactor** 线程启动后，将从任务队列中取出该任务进行执行。
+可以认为当`ServerBootstrap`类的工作完成之后，主线程会在`f.channel().closeFuture().sync();`处进行阻塞，然后之后 Netty程序的工作就交给 Reactor 线程去做了
 
-<img src="https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410311554111.png?x-oss-process=image/watermark,image_aW1nL3dhdGVyLnBuZw==,g_nw,x_1,y_1" alt="image-20241031155433032" style="zoom:33%;" />
+:::
 
- 至此，`NioServerSocketChannel` 的注册工作正式拉开帷幕~~  
+用户启动线程在向 Reactor 提交完 `NioServerSocketChannel` 的注册任务 `register0` 后，逐步退出调用堆栈，回退到最初的启动入口处：`ChannelFuture f = b.bind(PORT).sync()`。
+
+此时，Reactor 中的任务队列中只有一个任务 `register0`。Reactor 线程启动后，将从任务队列中取出该任务进行执行。
+
+<img src="https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202411152106423.png?x-oss-process=image/watermark,image_aW1nL3dhdGVyLnBuZw==,g_nw,x_1,y_1" alt="image-20241115210644344" style="zoom:33%;" />
+
+至此，`NioServerSocketChannel` 的注册工作正式拉开帷幕
 
 ##### register0
 
@@ -832,9 +843,9 @@ public abstract class AbstractNioChannel extends AbstractChannel {
 
 下面简单介绍 `SelectableChannel#register` 方法参数的含义：
 
-- **Selector**：表示 JDK NIO Channel 将要注册到哪个 Selector 上。
-- **int ops**：表示 Channel 上感兴趣的 IO 事件。当对应的 IO 事件就绪时，Selector 会返回 Channel 对应的 `SelectionKey`。
-- **Object attachment**：向 `SelectionKey` 中添加用户自定义的附加对象。
+- **`Selector`**：表示 JDK NIO Channel 将要注册到哪个 Selector 上。
+- **`int ops`**：表示 Channel 上感兴趣的 IO 事件。当对应的 IO 事件就绪时，Selector 会返回 Channel 对应的 `SelectionKey`。
+- **`Object attachment`**：向 `SelectionKey` 中添加用户自定义的附加对象。
 
 ##### HandlerAdded 事件回调中初始化 ChannelPipeline
 
@@ -842,7 +853,7 @@ public abstract class AbstractNioChannel extends AbstractChannel {
 
 此时，`NioServerSocketChannel` 的 pipeline 结构如下：
 
-<img src="https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410301553525.png?x-oss-process=image/watermark,image_aW1nL3dhdGVyLnBuZw==,g_nw,x_1,y_1" alt="image-20241030155306451" style="zoom:50%;" />
+<img src="https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202411152110621.png?x-oss-process=image/watermark,image_aW1nL3dhdGVyLnBuZw==,g_nw,x_1,y_1" alt="image-20241115211049556" style="zoom: 50%;" />
 
 ```java
 public abstract class ChannelInitializer<C extends Channel> extends ChannelInboundHandlerAdapter {
@@ -928,15 +939,15 @@ p.addLast(new ChannelInitializer<Channel>() {
 
 还记得在初始化 `NioServerSocketChannel` 时，`io.netty.bootstrap.ServerBootstrap#init` 方法中向 pipeline 中添加的 `ChannelInitializer` 吗？
 
-- 当执行完 `initChannel` 方法后，ChannelPipeline 的初始化就结束了，此时 `ChannelInitializer` 就不再需要继续留在 pipeline 中，因此需要将 `ChannelInitializer` 从 pipeline 中删除：`pipeline.remove(this)`。
+- 当执行完 `initChannel` 方法后，`ChannelPipeline` 的初始化就结束了，此时 `ChannelInitializer` 就不再需要继续留在 `pipeline` 中，因此需要将 `ChannelInitializer` 从 `pipeline` 中删除：`pipeline.remove(this)`。
 
-- 在初始化完 pipeline 后，pipeline 的结构再次发生变化：
+- 在初始化完 `pipeline` 后，`pipeline` 的结构再次发生变化：
 
-  <img src="https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410301551474.png?x-oss-process=image/watermark,image_aW1nL3dhdGVyLnBuZw==,g_nw,x_1,y_1" alt="image-20241030155155398" style="zoom:50%;" />
+  <img src="https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202411152112392.png?x-oss-process=image/watermark,image_aW1nL3dhdGVyLnBuZw==,g_nw,x_1,y_1" alt="image-20241115211241326" style="zoom:50%;" />
 
 - 此时`Main Reactor`中的任务队列`taskQueue`结构变化为：
 
-<img src="https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410311555526.png?x-oss-process=image/watermark,image_aW1nL3dhdGVyLnBuZw==,g_nw,x_1,y_1" alt="image-20241031155545425" style="zoom:33%;" />
+<img src="https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202411152120211.png?x-oss-process=image/watermark,image_aW1nL3dhdGVyLnBuZw==,g_nw,x_1,y_1" alt="image-20241031155545425" style="zoom:33%;" />
 
 添加`ServerBootstrapAcceptor`的任务是在初始化`NioServerSocketChannel`的时候向main reactor提交过去的。还记得吗？
 
@@ -1082,21 +1093,21 @@ private void register0(ChannelPromise promise) {
 
 此时`Reactor线程`中的`taskQueue`结构如下：
 
-<img src="https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410311555526.png?x-oss-process=image/watermark,image_aW1nL3dhdGVyLnBuZw==,g_nw,x_1,y_1" alt="image-20241031155545425" style="zoom:33%;" />
+<img src="https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202411152120211.png?x-oss-process=image/watermark,image_aW1nL3dhdGVyLnBuZw==,g_nw,x_1,y_1" alt="image-20241031155545425" style="zoom:33%;" />
 
 Reactor 线程会先取出位于 `taskQueue` 队首的任务执行，这里是指向 `NioServerSocketChannel` 的 pipeline 中添加 `ServerBootstrapAcceptor` 的异步任务。
 
 此时 `NioServerSocketChannel` 中 pipeline 的结构如下：
 
-<img src="https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410301551727.png?x-oss-process=image/watermark,image_aW1nL3dhdGVyLnBuZw==,g_nw,x_1,y_1" alt="image-20241030155116656" style="zoom:50%;" />
+![image-20241115212442774](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202411152124841.png)
 
 `Reactor线程`执行绑定任务。
 
 ### 3、绑定端口地址
 
-对`Channel`的操作行为全部定义在`ChannelOutboundInvoker接口中`。
+对`Channel`的操作行为全部定义在`ChannelOutboundInvoker`接口中。
 
-![image-20241031155724333](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410311557395.png)
+<img src="https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410311557395.png" alt="image-20241031155724333" style="zoom: 67%;" />
 
 ```java
 public interface ChannelOutboundInvoker {
@@ -1123,14 +1134,14 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
 }
 ```
 
-调用 `pipeline.bind(localAddress, promise)` 在 pipeline 中传播 bind 事件，触发回调 pipeline 中所有 `ChannelHandler` 的 bind 方法。事件在 pipeline 中的传播具有方向性：
+调用 `pipeline.bind(localAddress, promise)` 在 pipeline 中传播 bind 事件，触发回调 pipeline 中所有 `ChannelHandler` 的 bind 方法。事件在 `pipeline` 中的传播具有方向性：
 
 - **inbound 事件**：从 `HeadContext` 开始，逐个向后传播直到 `TailContext`。
 - **outbound 事件**：反向传播，从 `TailContext` 开始，反向向前传播直到 `HeadContext`。
 
-然而，这里的 bind 事件在 Netty 中被定义为 **outbound 事件**，因此它在 pipeline 中是反向传播的。这个过程先从 `TailContext` 开始反向传播，直到 `HeadContext`。
+然而，这里的 `bind` 事件在 Netty 中被定义为 **outbound 事件**，因此它在 `pipeline` 中是反向传播的。这个过程先从 `TailContext` 开始反向传播，直到 `HeadContext`。
 
-bind 的核心逻辑也正是实现在 `HeadContext` 中。
+`bind` 的核心逻辑也正是实现在 `HeadContext` 中。
 
 #### HeadContext
 
@@ -1200,20 +1211,20 @@ protected void doBind(SocketAddress localAddress) throws Exception {
 }
 ```
 
-- 判断是否为首次绑定。如果是的话，将触发 pipeline 中的 `ChannelActive` 事件，封装成异步任务，放入 Reactor 的 `taskQueue` 中。
+- 判断是否为首次绑定。如果是的话，将触发 `pipeline` 中的 `ChannelActive` 事件，封装成异步任务，放入 Reactor 的 `taskQueue` 中。
 - 执行 `safeSetSuccess(promise)`，并回调注册在 promise 上的 `ChannelFutureListener`。
 
 **同样的问题，当前执行线程已经是 Reactor 线程，为什么不直接触发 pipeline 中的** `ChannelActive` **事件，而是又封装成异步任务呢？**
 
-因为如果直接在这里触发 `ChannelActive` 事件，Reactor 线程就会执行 pipeline 中的 `ChannelHandler` 的 `channelActive` 事件回调。这将影响 `safeSetSuccess(promise)` 的执行，延迟注册在 promise 上的 `ChannelFutureListener` 的回调。
+因为如果直接在这里触发 `ChannelActive` 事件，Reactor 线程就会执行 `pipeline` 中的 `ChannelHandler` 的 `channelActive` 事件回调。这将影响 `safeSetSuccess(promise)` 的执行，延迟注册在 promise 上的 `ChannelFutureListener` 的回调。
 
 到目前为止，Netty 服务端已经完成了绑定端口地址的操作，`NioServerSocketChannel` 的状态现在变为 Active。
 
-最后，还有一件重要的事情要做，我们接着来看 pipeline 中对 `channelActive` 事件的处理。
+最后，还有一件重要的事情要做，我们接着来看 `pipeline` 中对 `channelActive` 事件的处理。
 
 #### channelActive 事件处理
 
-`channelActive` 事件在 Netty 中定义为 inbound 事件，因此它在 pipeline 中的传播为正向传播，从 `HeadContext` 一直到 `TailContext`。
+`channelActive` 事件在 Netty 中定义为 inbound 事件，因此它在 `pipeline` 中的传播为正向传播，从 `HeadContext` 一直到 `TailContext`。
 
 在 `channelActive` 事件的回调中，需要触发向 Selector 指定需要监听的 IO 事件，即 `OP_ACCEPT` 事件。这部分的逻辑主要在 `HeadContext` 中实现。
 
@@ -1326,11 +1337,11 @@ public abstract class AbstractNioChannel extends AbstractChannel {
 
 流程走到这里，Netty 服务端就真正的启动起来了，下一步就开始等待接收客户端连接了。大家此刻在来回看这副启动流程图，是不是清晰了很多呢？
 
-![image-20241031154508926](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410311545151.png?x-oss-process=image/watermark,image_aW1nL3dhdGVyLnBuZw==,g_nw,x_1,y_1)
+<img src="https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410311545151.png?x-oss-process=image/watermark,image_aW1nL3dhdGVyLnBuZw==,g_nw,x_1,y_1" alt="image-20241031154508926" style="zoom:33%;" />
 
-此时Netty的`Reactor模型`结构如下：
+此时 Netty 的`Reactor `模型结构如下：
 
-![image-20241031154643597](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410311546798.png?x-oss-process=image/watermark,image_aW1nL3dhdGVyLnBuZw==,g_nw,x_1,y_1)
+<img src="https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202411152056894.png?x-oss-process=image/watermark,image_aW1nL3dhdGVyLnBuZw==,g_nw,x_1,y_1" alt="image-20241031154643597" style="zoom: 33%;" />
 
 ## 总结
 

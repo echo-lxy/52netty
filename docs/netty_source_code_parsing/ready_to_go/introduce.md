@@ -88,7 +88,7 @@
 - [GitHub - yongshun/learn_netty_source_code: Netty 源码分析教程](https://github.com/yongshun/learn_netty_source_code)
 - [Introduction · Essential Netty in Action 《Netty 实战(精髓)》](https://waylau.gitbooks.io/essential-netty-in-action/content/)
 - [跟闪电侠学 Netty：Netty 即时聊天实战与底层原理 (豆瓣)](https://book.douban.com/subject/35752082/)
-- [00 学好 Netty，是你修炼 Java 内功的必经之路](https://learn.lianglianglee.com/专栏/Netty 核心原理剖析与 RPC 实践-完/00 学好 Netty，是你修炼 Java 内功的必经之路.md)
+- [Netty 核心原理剖析与 RPC 实践-完](https://learn.lianglianglee.com/专栏/Netty 核心原理剖析与 RPC 实践-完)
 - [netty/netty at netty-4.1.56.Final](https://github.com/netty/netty/tree/netty-4.1.56.Final)
 - [小林 coding](https://xiaolincoding.com/)
 - [netty - 文集 - 简书](https://www.jianshu.com/nb/41207414)

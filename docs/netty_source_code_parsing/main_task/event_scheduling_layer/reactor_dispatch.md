@@ -6,89 +6,122 @@
 
 在[《BootStrap 启动 Netty 服务》](/netty_source_code_parsing/main_task/boot_layer/bootstrap_run)末尾，BootStrap 引导类已经结束它的核心工作了，它最后的任务就是绑定端口
 
-![img](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/1730010442393-ee7e533d-aa53-4755-92c5-859139064362.png)
+```java
+public final class EchoServer {
+    ...
+    public static void main(String[] args) throws Exception {
+        // Configure the server.
+        //创建主从Reactor线程组
+        EventLoopGroup bossGroup = new NioEventLoopGroup(1);
+        EventLoopGroup workerGroup = new NioEventLoopGroup();
+       	...
+            ChannelFuture f = b.bind(PORT).sync(); // [!code focus]
+            // Wait until the server socket is closed.
+            f.channel().closeFuture().sync();
+        } finally {
+            // Shut down all event loops to terminate all threads.
+            bossGroup.shutdownGracefully();
+            workerGroup.shutdownGracefully();
+        }
+    }
+}
+```
+
+
 
 接着就开始等待 Main Reactor 上唯一的这个 `NioServerSocketChannel` 关闭：`f.channel().closeFuture().sync();`
 
-所以我们的主线程就被卡在这儿了，那接下来我们程序的触发器是什么呢
+所以我们的主线程就被卡在这儿了，那接下来我们程序的**触发点**是什么呢
+
+::: tip 什么是触发点
+
+在 Java 编程或软件开发的上下文中，**“程序的触发点”** 通常指的是触发程序逻辑或事件执行的具体时刻或条件。这些触发点可以是外部输入、特定的时间条件、用户操作，甚至是系统状态的变化。
+
+:::
+
+---
 
 不知你是否还记得 Netty 官网上的这段大字？
 
 ![img](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/1730010818152-7a66884e-a6c8-49aa-8b13-12a0de9f9f1d.png)
 
-::: info 翻译
+> **翻译**：Netty 是一个异步事件驱动的网络应用程序框架，用于快速开发可维护的高性能协议服务器和客户端。
 
-Netty 是一个异步事件驱动的网络应用程序框架，用于快速开发可维护的高性能协议服务器和客户端。
+因此得知 Netty 是依靠**事件**去**触发**其核心服务的，那么
 
-:::
+* 这些**事件**是什么呢？
+* Reactor 线程又是如何去**被**事件**驱动**的呢？
 
-因此得知 Netty 是依靠事件去 **触发** 其核心服务的，那么
-
-* 这些事件是什么呢？
-* Reactor 线程又是如何去**被**事件所驱动的呢？
-
-这就是本文的目标
+这就是本文的目标！
 
 在[《BootStrap 启动 Netty 服务》](/netty_source_code_parsing/main_task/boot_layer/bootstrap_run)中，我们最终创建出了如下 **Main Sub Reactor Group 模型**
 
-![img](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410311546798.png?x-oss-process=image/watermark,image_aW1nL3dhdGVyLnBuZw==,g_nw,x_1,y_1)
+<img src="https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202411152056894.png?x-oss-process=image/watermark,image_aW1nL3dhdGVyLnBuZw==,g_nw,x_1,y_1" alt="img" style="zoom: 33%;" />
 
 - **Main Reactor Group** 管理着 `NioServerSocketChannel`，用于接收客户端连接。在其 pipeline 中的 `ServerBootstrapAcceptor` 里初始化接收到的客户端连接，随后将初始化好的客户端连接注册到从 Reactor 线程组中。
 - **Sub Reactor Group** 主要负责监听和处理注册到其上的所有 `NioSocketChannel` 的 IO 就绪事件。
   - 一个 Channel 只能分配给一个固定的 Reactor。
   - 一个 Reactor 负责处理多个 Channel 上的 IO 就绪事件，这样可以将服务端承载的全量客户端连接分摊到多个 Reactor 中处理，同时也能保证 Channel 上 IO 处理的线程安全性。
 
-
 Reactor 与 Channel 之间的对应关系如下图所示：
 
-<img src="https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410311607161.png?x-oss-process=image/watermark,image_aW1nL3dhdGVyLnBuZw==,b_nw,x_1,y_1" alt="image-20241031160743074" style="zoom:33%;" />
+<img src="https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202411162019538.png?x-oss-process=image/watermark,image_aW1nL3dhdGVyLnBuZw==,b_nw,x_1,y_1" alt="image-20241031160743074" style="zoom:33%;" />
 
 ------
 
-当 Netty Reactor 框架启动完毕后，第一件也是最重要的事情就是高效地接收客户端的连接。在探讨 Netty 服务端如何接收连接之前，我们需要弄清楚 Reactor 线程的运行机制，以及它是如何监听并处理 Channel 上的 IO 就绪事件的。
+当 Netty 的 Reactor 框架启动完毕后，第一件也是最重要的事情，就是高效地接收客户端的连接。在深入探讨 Netty 服务端如何接收连接之前，需要先弄清 Reactor 线程的运行机制，以及它如何监听和处理 `Channel` 上的 IO 就绪事件。
 
-本文相当于后续我们介绍 Reactor 线程监听处理 Connect 事件、ACCEPT 事件、Read 事件和 Write 事件的前置篇，专注于讲述 Reactor 线程的整个运行框架。理解本文内容将对理解后面 Reactor 线程如何处理 IO 事件大有帮助。
+本文可以看作后续介绍 Reactor 线程监听和处理连接事件（`Connect`）、接受事件（`Accept`）、读事件（`Read`）和写事件（`Write`）的基础内容，专注于讲述 Reactor 线程的运行框架。理解这些内容对于进一步理解 Reactor 线程如何处理 IO 事件至关重要。
 
-在 Netty 框架的创建和启动阶段，我们无数次提到 Reactor 线程。在本文要介绍的运行阶段，Reactor 线程将大显神威。
+在 Netty 框架的创建和启动阶段，Reactor 线程被反复提及。而在本文介绍的运行阶段，Reactor 线程将正式开始发挥它的重要作用。
 
-经过前面的介绍，我们了解到 **Netty 中的 Reactor 线程主要完成以下三件事情**：
+根据前面的介绍，我们知道 Netty 中的 Reactor 线程主要负责以下三件事情：
 
-- 轮询注册在 Reactor 上的所有 Channel 感兴趣的 IO 就绪事件
-- 处理 Channel 上的 IO 就绪事件
-- 执行 Reactor 中的异步任务
+1. 轮询注册在 Reactor 上所有 `Channel` 感兴趣的 IO 就绪事件。
+2. 处理 `Channel` 上的 IO 就绪事件。
+3. 执行 Reactor 中的异步任务。
 
 ## Reactor 线程的整个运行框架
 
-- Netty 的 IO 模型是通过 JDK NIO Selector 实现的 IO 多路复用模型
-- Netty 的 IO 线程模型为主从 Reactor 线程模型
+- Netty 的 IO 模型通过 JDK NIO 的 `Selector` 实现 IO 多路复用。
+- Netty 的 IO 线程模型采用主从 Reactor 线程模型。
 
-因此，我们很容易理解 Netty 会使用一个用户态的 Reactor 线程，不断通过 Selector 在内核态轮询 Channel 上的 IO 就绪事件。简单来说，Reactor 线程实际上执行的是一个死循环，在这个循环中不断通过 Selector 轮询 IO 就绪事件：
+因此，Netty 使用一个用户态的 Reactor 线程，不断通过 `Selector` 在内核态轮询 `Channel` 上的 IO 就绪事件。简而言之，Reactor 线程执行的是一个死循环，在这个循环中通过 `Selector` 不断轮询 IO 就绪事件：
 
-* 如果发生 IO 就绪事件，则从 Selector 系统调用中返回并处理相应的事件
-* 如果没有发生 IO 就绪事件，则一直阻塞在 Selector 系统调用上，直到满足 Selector 的唤醒条件。
+- 如果发生 IO 就绪事件，会从 `Selector` 的系统调用中返回，并处理相应的事件。
+- 如果没有发生 IO 就绪事件，则一直阻塞在 `Selector` 的系统调用上，直到满足 `Selector` 的唤醒条件。
 
-**那唤醒条件是啥呢？** 
+**那唤醒条件是什么呢？**
 
-以下三个条件中，只要满足任意一个，Reactor 线程就会从 Selector 上被唤醒：
+以下三个条件中，只要满足任意一个，Reactor 线程就会从 `Selector` 上被唤醒：
 
-- 当 Selector 轮询到有 IO 活跃事件发生时。
-- 当 Reactor 线程需要执行的定时任务到达任务执行时间（deadline）时。
-- 当有异步任务提交给 Reactor 时，Reactor 线程需要从 Selector 上被唤醒，以便及时执行异步任务。
+1. 当 `Selector` 轮询到有 IO 活跃事件发生时。
+2. 当 Reactor 线程需要执行的定时任务到达任务执行时间（`deadline`）时。
+3. 当有异步任务提交给 Reactor 时，Reactor 线程需要从 `Selector` 上被唤醒，以便及时执行异步任务。
 
- 可以看出，Netty 对 Reactor 线程的利用相当高效。如果当前没有 IO 就绪事件需要处理，Reactor 线程不会在此闲等待，而是会立即被唤醒，转而处理提交的异步任务和定时任务。因此，Reactor 线程可以说是 996 的典范，一刻不停歇地运作着。  
+可以看出，Netty 对 Reactor 线程的利用相当高效。如果当前没有 IO 就绪事件需要处理，Reactor 线程不会闲等待，而是会立即被唤醒，转而处理提交的异步任务和定时任务。因此，Reactor 线程可以说是一刻不停地高效运作着。
 
-<img src="https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410311608510.png?x-oss-process=image/watermark,image_aW1nL3dhdGVyLnBuZw==,g_nw,x_1,y_1" alt="image-20241031160816422" style="zoom:33%;" />
+<img src="https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202411162020430.png?x-oss-process=image/watermark,image_aW1nL3dhdGVyLnBuZw==,g_nw,x_1,y_1" alt="image-20241031160816422" style="zoom:33%;" />
 
  在了解了 Reactor 线程的大概运行框架后，接下来我们将深入源码，查看其核心运转框架的实现。由于这部分源码较为庞大和复杂，笔者将先提取出其运行框架，以便于大家整体理解整个运行过程的全貌。  
 
 <img src="https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410312247735.png?x-oss-process=image/watermark,image_aW1nL3dhdGVyLnBuZw==,g_nw,x_1,y_1" alt="image-20241031163518703" style="zoom: 33%;" />
 
-上图所展示的就是 **Reactor** 整个工作体系的全貌，主要分为如下几个重要的工作模块：
+上图展示的正是 **Reactor** 工作体系的整体架构，其运行机制可以分为以下几个关键模块：
 
-1. **Reactor线程** 在 `Selector` 上阻塞获取 IO 就绪事件。在这个模块中，首先会检查当前是否有异步任务需要执行。如果有异步任务，那么无论当前是否有 IO 就绪事件，都不能阻塞在 `Selector` 上。随后，会非阻塞地轮询 `Selector` 上是否有 IO 就绪事件。如果有，则可以与异步任务一起执行，优先处理 IO 就绪事件，再执行异步任务。
-2. 如果当前没有异步任务需要执行，**Reactor线程** 会接着查看是否有定时任务需要执行。如果有，则在 `Selector` 上阻塞，直到定时任务的到期时间 `deadline`，或满足其他唤醒条件被唤醒。如果没有定时任务需要执行，**Reactor线程** 则会在 `Selector` 上一直阻塞，直到满足唤醒条件。
-3. 当 **Reactor线程** 满足唤醒条件被唤醒后，首先会判断当前是因为有 IO 就绪事件被唤醒，还是因为有异步任务需要执行被唤醒，或是两者都有。随后，**Reactor线程** 就会处理 IO 就绪事件并执行异步任务。
-4. 最后，**Reactor线程** 返回循环起点，不断重复上述三个步骤。
+1. **Reactor 线程轮询 IO 就绪事件**
+   - 在 `Selector` 上阻塞以获取 IO 就绪事件。
+   - 首先检查是否有异步任务需要执行。如果存在异步任务，则无论当前是否有 IO 就绪事件，都不会阻塞在 `Selector` 上。
+   - 随后非阻塞地轮询 `Selector` 是否有 IO 就绪事件。如果有事件，则优先处理 IO 就绪事件，然后再执行异步任务。
+2. **处理定时任务**
+   - 如果当前没有异步任务需要执行，`Reactor` 线程会检查是否有定时任务需要处理。
+   - 如果有定时任务，将在 `Selector` 上阻塞，直到定时任务的到期时间（`deadline`）或满足其他唤醒条件被唤醒。
+   - 如果既没有异步任务，也没有定时任务，则会在 `Selector` 上持续阻塞，直到满足唤醒条件。
+3. **事件处理**
+   - 当 `Reactor` 线程被唤醒后，会判断唤醒的原因：是因为 IO 就绪事件、异步任务，还是两者都有。
+   - 随后，优先处理 IO 就绪事件，并执行异步任务。
+4. **循环运行**
+   - 完成上述任务后，`Reactor` 线程返回循环起点，重复上述流程。
 
 
 
@@ -209,7 +242,7 @@ Reactor 线程最重要的一件事情就是轮询 IO 就绪事件。`SelectStra
 
  从默认的轮询策略中，我们可以看出 `selectStrategy.calculateStrategy` 只会返回三种情况：  
 
-![image-20241030154859578](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410301556604.png?x-oss-process=image/watermark,image_aW1nL3dhdGVyLnBuZw==,g_nw,x_1,y_1)
+![image-20241030154859578](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202411162021142.png?x-oss-process=image/watermark,image_aW1nL3dhdGVyLnBuZw==,g_nw,x_1,y_1)
 
 ```java
 public interface SelectStrategy {
@@ -233,9 +266,9 @@ public interface SelectStrategy {
 
 我们首先来看一下 Netty 中定义的三种轮询策略：
 
-- **SelectStrategy.SELECT**：当没有任何异步任务需要执行时，Reactor 线程可以安心地阻塞在 Selector 上，等待 IO 就绪事件的到来。
-- **SelectStrategy.CONTINUE**：重新开启一轮 IO 轮询。
-- **SelectStrategy.BUSY_WAIT**：Reactor 线程进行自旋轮询。由于 NIO 不支持自旋操作，因此这里直接跳转到 `SelectStrategy.SELECT` 策略。
+- **`SelectStrategy.SELECT`**：当没有任何异步任务需要执行时，Reactor 线程可以安心地阻塞在 Selector 上，等待 IO 就绪事件的到来。
+- **`SelectStrategy.CONTINUE`**：重新开启一轮 IO 轮询。
+- **`SelectStrategy.BUSY_WAIT`**：Reactor 线程进行自旋轮询。由于 NIO 不支持自旋操作，因此这里直接跳转到 `SelectStrategy.SELECT` 策略。
 
 接下来，我们来看轮询策略的计算逻辑 `calculateStrategy`。
 
@@ -304,7 +337,7 @@ int selectNow() throws IOException {
 
  从默认的轮询策略中，我们可以看出 `selectStrategy.calculateStrategy` 只会返回三种情况：  
 
-![image-20241030151501580](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410301520999.png?x-oss-process=image/watermark,image_aW1nL3dhdGVyLnBuZw==,g_nw,x_1,y_1)
+![image-20241030154859578](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202411162021142.png?x-oss-process=image/watermark,image_aW1nL3dhdGVyLnBuZw==,g_nw,x_1,y_1)
 
 
 
@@ -314,11 +347,7 @@ int selectNow() throws IOException {
 
 
 
-现在`Reactor`的流程处理逻辑走向我们清楚了，那么接下来我们把重点放在`SelectStrategy.SELECT`分支中的轮询逻辑上。
-
-**这块是 Reactor 监听 IO 就绪事件的核心。**
-
-
+现在`Reactor`的流程处理逻辑走向我们清楚了，那么接下来我们把重点放在`SelectStrategy.SELECT`分支中的轮询逻辑上。**这块是 Reactor 监听 IO 就绪事件的核心。**
 
 ### 轮询逻辑
 
@@ -357,7 +386,7 @@ case SelectStrategy.SELECT:
 
 Reactor 线程除了要轮询 Channel 上的 IO 就绪事件以及处理这些事件外，还有一个任务，就是负责执行 Netty 框架中的异步任务。
 
-<img src="https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410311612707.png?x-oss-process=image/watermark,image_aW1nL3dhdGVyLnBuZw==,g_nw,x_1,y_1" alt="image-20241031161203653" style="zoom:33%;" />
+<img src="https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202411162022402.png?x-oss-process=image/watermark,image_aW1nL3dhdGVyLnBuZw==,g_nw,x_1,y_1" alt="image-20241031161203653" style="zoom:33%;" />
 
 在 Netty 框架中，异步任务分为三类：
 

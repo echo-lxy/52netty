@@ -4,17 +4,17 @@
 
 我们之前完整的介绍了服务端 Netty 框架的骨架主从 Reactor 组的搭建过程，阐述了 Reactor 是如何被创建出来的，并介绍了它的核心组件如下图所示
 
-<img src="https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410311612707.png?x-oss-process=image/watermark,image_aW1nL3dhdGVyLnBuZw==,g_nw,x_1,y_1" alt="image-20241030172605776" style="zoom:33%;" />
+<img src="https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202411162022402.png?x-oss-process=image/watermark,image_aW1nL3dhdGVyLnBuZw==,g_nw,x_1,y_1" alt="image-20241030172605776" style="zoom:33%;" />
 
-- **thread**：Reactor 中的 IO 线程，主要负责监听 IO 事件、处理 IO 任务和执行异步任务。
-- **selector**：JDK NIO 对操作系统底层 IO 多路复用技术的封装，用于监听 IO 就绪事件。
-- **taskQueue**：用于保存 Reactor 需要执行的异步任务。这些异步任务可以由用户在业务线程中向 Reactor 提交，也可以是 Netty 框架提交的一些核心任务。
-- **scheduledTaskQueue**：保存 Reactor 中执行的定时任务，代替原有的时间轮以执行延时任务。
-- **tailQueue**：保存 Reactor 需要执行的一些尾部收尾任务。在普通任务执行完后，Reactor 线程会执行尾部任务，例如对 Netty 的运行状态进行一些统计数据，如任务循环的耗时和占用的物理内存大小等。
+- **`thread`**：Reactor 中的 IO 线程，主要负责监听 IO 事件、处理 IO 任务和执行异步任务。
+- **`selector`**：JDK NIO 对操作系统底层 IO 多路复用技术的封装，用于监听 IO 就绪事件。
+- **`taskQueue`**：用于保存 Reactor 需要执行的异步任务。这些异步任务可以由用户在业务线程中向 Reactor 提交，也可以是 Netty 框架提交的一些核心任务。
+- **`scheduledTaskQueue`**：保存 Reactor 中执行的定时任务，代替原有的时间轮以执行延时任务。
+- **`tailQueue`**：保存 Reactor 需要执行的一些尾部收尾任务。在普通任务执行完后，Reactor 线程会执行尾部任务，例如对 Netty 的运行状态进行一些统计数据，如任务循环的耗时和占用的物理内存大小等。
 
-在骨架搭建完毕之后，我们随后介绍了 **本文的主角服务端 NioServerSocketChannel 的创建，初始化，绑定端口地址，向 main reactor 注册监听**`OP_ACCEPT事件`**的完整过程**。
+在骨架搭建完毕之后，我们随后介绍了 **本文的主角服务端 `NioServerSocketChannel` 的创建，初始化，绑定端口地址，向 main reactor 注册监听**`OP_ACCEPT事件`**的完整过程**。
 
-![image-20241030172736143](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410311546798.png?x-oss-process=image/watermark,image_aW1nL3dhdGVyLnBuZw==,g_nw,x_1,y_1)
+![image-20241030172736143](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202411152056894.png?x-oss-process=image/watermark,image_aW1nL3dhdGVyLnBuZw==,g_nw,x_1,y_1)
 
 接下来，我们需要等待客户端连接到我们的 Netty 服务器（请参阅[《处理 OP_CONNECT 事件》](/netty_source_code_parsing/main_task/event_scheduling_layer/io/OP_CONNECT)），这意味着服务端的 Main Reactor 正在等待 `OP_ACCEPT` 事件的到来。
 
@@ -29,7 +29,7 @@
 
 Netty 对于 IO 事件的监听和处理统一封装在 Reactor 模型中。本文将重点聚焦于 `OP_ACCEPT` 事件的处理。
 
-<img src="https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410311608510.png?x-oss-process=image/watermark,image_aW1nL3dhdGVyLnBuZw==,g_nw,x_1,y_1" alt="image-20241030172757750" style="zoom:33%;" />
+<img src="https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202411162020430.png?x-oss-process=image/watermark,image_aW1nL3dhdGVyLnBuZw==,g_nw,x_1,y_1" alt="image-20241030172757750" style="zoom:33%;" />
 
 Reactor 线程会在一个死循环中持续运转，轮询监听 Selector 上的 IO 事件。当 IO 事件变为活跃状态时，Reactor 将从 Selector 中被唤醒，转而执行 IO 就绪事件的处理。在这个过程中，我们引出了前述提到的四种 IO 事件的**处理入口函数**
 
@@ -118,7 +118,7 @@ public final class NioEventLoop extends SingleThreadEventLoop {
 
 在 Netty 中，`OP_ACCEPT` 事件的处理入口函数被封装在 `NioServerSocketChannel` 的底层操作类 `Unsafe` 的 `read` 方法中。
 
-![image-20241031164525668](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410311645723.png)
+<img src="https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410311645723.png" alt="image-20241031164525668" style="zoom: 67%;" />
 
 在 `NioServerSocketChannel` 中，`Unsafe` 操作类的实现类型为 `NioMessageUnsafe`，它定义在继承结构中的父类 `AbstractNioMessageChannel` 中。接下来，我们深入到 `NioMessageUnsafe#read` 方法，来查看 Netty 对 **OP_ACCEPT** 事件的具体处理流程：
 
@@ -128,11 +128,11 @@ public final class NioEventLoop extends SingleThreadEventLoop {
 
 ![image-20241030173237920](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410301732963.png)
 
-有朋友可能会好奇，为什么 `OP_READ` 就绪事件和 `OP_ACCEPT` 就绪事件使用的是同一个 `if` 逻辑。实际上，这里运用了面向对象三大特性中的 **多态**，会根据 `Channel` 的类型调用不同的逻辑。这是因为 `sub Reactor` 和 `main Reactor` 所对应的 `Channel` 是不同类型的。通过多态，代码能够在运行时根据具体的 `Channel` 类型动态决定执行哪一套逻辑，从而实现灵活性和可扩展性。
+有同学可能会好奇，为什么 `OP_READ` 就绪事件和 `OP_ACCEPT` 就绪事件使用的是同一个 `if` 逻辑。实际上，**这里运用了面向对象三大特性中的多态**，会根据 `Channel` 的类型调用不同的逻辑。这是因为 `sub Reactor` 和 `main Reactor` 所对应的 `Channel` 是不同类型的。通过多态，代码能够在运行时根据具体的 `Channel` 类型动态决定执行哪一套逻辑，从而实现灵活性和可扩展性。
 
 ![image-20241030173443086](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410301734123.png)
 
-因此，在本文中，我们只需关注 `NioMessageUnsafe#read()` 方法即可。通过这个方法，我们可以深入理解在 NIO 中处理读取事件的具体逻辑和实现细节。
+因此，在本文中，我们只需关注 main reactor 对应的 `NioMessageUnsafe#read()` 方法即可。通过这个方法，我们可以深入理解在 NIO 中处理读取事件的具体逻辑和实现细节。 
 
 ![image-20241030173706199](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410301737297.png)
 
@@ -144,7 +144,7 @@ Main Reactor 线程在一个 `do...while` 循环的 `read loop` 中，不断调�
 
 需要注意的是，`read loop` 循环的读取次数被限制为 16 次。当 Main Reactor 从 `NioServerSocketChannel` 中读取客户端连接 `NioSocketChannel` 的次数达到 16 次后，无论是否还有其他客户端连接，都会停止继续读取。
 
-这是因为，在[《核心引擎 Reactor 的运转架构》](/netty_source_code_parsing/main_task/event_scheduling_layer/reactor_dispatch)中提到，Netty 对 Reactor 线程的压力较大，需处理的任务繁多。除了监听和处理 IO 就绪事件外，还需要执行用户和 Netty 框架提交的异步任务和定时任务。因此，Main Reactor 线程不能无限制地执行 `read loop`，以确保有足够的时间来处理异步任务，避免因过多的连接接收而耽误异步任务的执行。
+这是因为，在[《Reactor 的运转架构》](/netty_source_code_parsing/main_task/event_scheduling_layer/reactor_dispatch)中提到，Netty 对 Reactor 线程的压力较大，需处理的任务繁多。除了监听和处理 IO 就绪事件外，还需要执行用户和 Netty 框架提交的异步任务和定时任务。因此，Main Reactor 线程不能无限制地执行 `read loop`，以确保有足够的时间来处理异步任务，避免因过多的连接接收而耽误异步任务的执行。
 
 如果 Main Reactor 线程在 `read loop` 中读取客户端连接 `NioSocketChannel` 的次数已经达到 16 次，即使此时还有未接收的客户端连接，Main Reactor 线程也不会再接收，而是会转去执行异步任务。在异步任务执行完毕后，再回到 `read loop` 执行剩余的连接接收任务。
 
@@ -237,7 +237,7 @@ public NioServerSocketChannel(ServerSocketChannel channel) {
 
 同样地，通过 `pipeline()` 获取到的也是 `NioServerSocketChannel` 中的 **pipeline**。`pipeline` 会在 `NioServerSocketChannel` 成功注册到 **main reactor** 后被初始化，用于管理一系列 **ChannelHandler** 处理链，负责处理从事件捕获到响应生成的全过程。
 
-![image-20241030181159635](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410301811694.png?x-oss-process=image/watermark,image_aW1nL3dhdGVyLnBuZw==,g_nw,x_1,y_1)
+![image-20241030181159635](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202411152121943.png?x-oss-process=image/watermark,image_aW1nL3dhdGVyLnBuZw==,g_nw,x_1,y_1)
 
 前面提到，Main Reactor 线程在 `read loop` 中会被限制只能读取 NioServerSocketChannel 中的客户端连接 16 次。因此，在开始 `read loop` 之前，我们需要创建一个能够保存读取次数的对象，以便在每次 `read loop` 循环后判断是否结束循环。
 

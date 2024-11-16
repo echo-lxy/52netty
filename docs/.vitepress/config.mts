@@ -198,12 +198,12 @@ export default defineConfig({
                         link: "/main_task/event_scheduling_layer/io/event_loop_operate_io_event.md",
                       },
                       {
-                        text: "处理 OP_ACCEPT 事件",
-                        link: "/main_task/event_scheduling_layer/io/OP_ACCEPT.md",
-                      },
-                      {
                         text: "处理 OP_CONNECT 事件",
                         link: "/main_task/event_scheduling_layer/io/OP_CONNECT.md",
+                      },
+                      {
+                        text: "处理 OP_ACCEPT 事件",
+                        link: "/main_task/event_scheduling_layer/io/OP_ACCEPT.md",
                       },
 
                       {

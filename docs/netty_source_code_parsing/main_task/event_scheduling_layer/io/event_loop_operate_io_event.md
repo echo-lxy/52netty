@@ -4,13 +4,44 @@
 
 在[《核心引擎 Reactor 的运转架构》](/netty_source_code_parsing/main_task/event_scheduling_layer/reactor_dispatch)中，我们得知 Reactor 线程在轮询过程中会去不断轮询捕获 IO 事件并处理，对标如下代码
 
-![img](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410301622577.png)
+```Java
+public final class NioEventLoop extends SingleThreadEventLoop {
+    ...
+    @Override
+    protected void run() {
+        int selectCnt = 0;
+        for (;;) {
+            
+			...
+            
+            if (ioRatio == 100) {
+                try {
+                    if (strategy > 0) {
+                        processSelectedKeys();// [!code focus]
+                    }
+                } finally {
+                    // Ensure we always run tasks.
+                    ranTasks = runAllTasks();
+                }
+            } else if (strategy > 0) {
+                final long ioStartTime = System.nanoTime();
+                try {
+                    processSelectedKeys();// [!code focus]
+                } finally {
+                    // Ensure we always run tasks.
+                    final long ioTime = System.nanoTime() - ioStartTime;
+                    ranTasks = runAllTasks(ioTime * (100 - ioRatio) / ioRatio);
+                }
+           
+		...
+}
+```
 
-也就是下图红框处
+上述代码块中聚焦的两行代码对应下图红框
 
 <img src="https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410311634691.png?x-oss-process=image/watermark,image_aW1nL3dhdGVyLnBuZw==,g_nw,x_1,y_1" alt="image-20241031163402539" style="zoom:33%;" />
 
-本文旨在说明 Reactor 是如何去捕获到 IO 就绪事件的，以及 IO 事件的注册时机
+本文旨在说明 Reactor 是如何去捕获到 IO 就绪事件的，以及 IO 事件的注册时机。关键在于 `processSelectedKeys()`方法
 
 ![img](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410301622553.png)
 
@@ -365,8 +396,8 @@ final class SelectedSelectionKeySetSelector extends Selector {
 
 ![img](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410301623064.png)
 
-- `**processSelectedKeysPlain**` 适合于简单的实现，容易理解，但在高并发场景下可能会引入性能问题。
-- `**processSelectedKeysOptimized**` 则通过直接数组操作来减少内存分配和垃圾回收压力，从而提高性能。特别是在高负载情况下，优化的方法能够显著提高处理效率。
+- `processSelectedKeysPlain` 适合于简单的实现，容易理解，但在高并发场景下可能会引入性能问题。
+- `processSelectedKeysOptimized` 则通过直接数组操作来减少内存分配和垃圾回收压力，从而提高性能。特别是在高负载情况下，优化的方法能够显著提高处理效率。
 
 ### processSelectedKey
 
@@ -534,7 +565,18 @@ void cancel(SelectionKey key) {
 
 #### OP_WRITE
 
-当我们在代码中调用 flush 时，也就是将我们要写入 IO 的数据从用户态中的缓冲区刷入 TCP 缓冲区中，因为 TCP 通过滑动窗口机制去控制它的发送方的发送速度，所以当接收方以及网络传输速度跟不上发送方发送数据的速度时，发送方的 TCP 缓冲区就会被打满，这时候我们的 flush 就会失效，因为内核 TCP 缓冲区已经被打满了，再怎么写也写不进去数据，然后这时候 Netty 捕捉到了这个“异常”，就会对当前文件描述符注册 OP_WRITE 事件，当其缓冲区能写入数据的时候，会产生 OP_WRITE 事件，然后我们的 Netty 中的 selector 就会捕获到此事件，然后我们会再次将用户态中的数据刷到内核中的 TCP 缓冲区
+当我们在代码中调用 `flush` 时，实际上是尝试将用户态缓冲区中的数据刷入内核态的 TCP 缓冲区。由于 TCP 协议采用滑动窗口机制控制数据发送速度，当以下情况发生时，会影响数据写入流程：
+
+1. **TCP 缓冲区已满**
+   - 如果接收方的处理速度或网络传输速度较慢，发送方的内核态 TCP 缓冲区可能会被填满。
+   - 当缓冲区满了时，`flush` 操作会暂时“失效”，因为内核态无法接收更多数据。
+2. **Netty 捕获写阻塞**
+   - Netty 监测到数据无法写入时，会对当前的文件描述符（`FileDescriptor`）注册 `OP_WRITE` 事件。
+   - `OP_WRITE` 事件表示当前缓冲区可用空间已经释放，允许继续写入。
+3. **事件驱动恢复写操作**
+   - 当内核态 TCP 缓冲区释放空间时，会触发 `OP_WRITE` 事件。
+   - 此时，Netty 的 `Selector` 会捕获该事件。
+   - Netty 响应 `OP_WRITE` 事件，将用户态缓冲区中的数据重新尝试写入内核态 TCP 缓冲区。
 
 ![img](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410301625449.png)
 

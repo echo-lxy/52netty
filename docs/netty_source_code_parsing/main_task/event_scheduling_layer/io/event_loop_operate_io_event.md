@@ -37,7 +37,7 @@ public final class NioEventLoop extends SingleThreadEventLoop {
 }
 ```
 
-上述代码块中聚焦的两行代码对应下图红框
+上述代码块中聚焦的两行代码对应下图虚线红框
 
 <img src="https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410311634691.png?x-oss-process=image/watermark,image_aW1nL3dhdGVyLnBuZw==,g_nw,x_1,y_1" alt="image-20241031163402539" style="zoom:33%;" />
 
@@ -47,7 +47,7 @@ public final class NioEventLoop extends SingleThreadEventLoop {
 
 从方法签名可以推测出一个是经过优化的处理方法，一个是普通的处理方法。
 
-我们先来看看这个优化是啥东西
+我们先来看看是咋优化的
 
 ## Netty 对 Java NIO Selector 的优化
 
@@ -107,24 +107,25 @@ public abstract class SelectorImpl extends AbstractSelector {
 
 在 `Selector` 中的几个关键集合和字段与 `Epoll` 机制类似：
 
-- `Set<SelectionKey> selectedKeys`：
+**`Set<SelectionKey> selectedKeys`：**
 
-  - `selectedKeys` 可以类比为 `Epoll` 中的就绪队列 `eventpoll->rdllist`，存放所有当前 I/O 就绪的 `Channel`，也就是已经满足操作条件的通道。
-  - 每当 `Selector` 监听到某个 `Channel` 就绪，就将对应的 `SelectionKey` 添加到 `selectedKeys` 中。
-  - `SelectionKey` 可以理解为 `Channel` 在 `Selector` 中的一个标记，与 `epoll_event` 类似，封装了 I/O 就绪的 `Socket` 信息。
+- `selectedKeys` 可以类比为 `Epoll` 中的就绪队列 `eventpoll->rdllist`，存放所有当前 I/O 就绪的 `Channel`，也就是已经满足操作条件的通道。
+- 每当 `Selector` 监听到某个 `Channel` 就绪，就将对应的 `SelectionKey` 添加到 `selectedKeys` 中。
+- `SelectionKey` 可以理解为 `Channel` 在 `Selector` 中的一个标记，与 `epoll_event` 类似，封装了 I/O 就绪的 `Socket` 信息。
 
-- `HashSet<SelectionKey> keys`：
+**`HashSet<SelectionKey> keys`：**
 
-  - `keys` 存放所有注册到该 `Selector` 的 `Channel`，与 `epoll` 中管理所有文件描述符的红黑树结构 `rb_root` 类似。
-  - 当 `Channel` 注册到 `Selector` 后，会生成对应的 `SelectionKey`，并将该 `SelectionKey` 添加到 `keys` 中。
+- `keys` 存放所有注册到该 `Selector` 的 `Channel`，与 `epoll` 中管理所有文件描述符的红黑树结构 `rb_root` 类似。
+- 当 `Channel` 注册到 `Selector` 后，会生成对应的 `SelectionKey`，并将该 `SelectionKey` 添加到 `keys` 中。
 
-- `Set<SelectionKey> publicSelectedKeys`：
+**`Set<SelectionKey> publicSelectedKeys`：**
 
-  - `publicSelectedKeys` 是 `selectedKeys` 的外部视图，外部线程可以通过该集合获取所有 I/O 就绪的 `SelectionKey`。
-  - 这个集合为只读视图，外部线程只能删除元素，不能增加，并且集合不是线程安全的，以避免多线程并发写入导致的问题。
+- `publicSelectedKeys` 是 `selectedKeys` 的外部视图，外部线程可以通过该集合获取所有 I/O 就绪的 `SelectionKey`。
+- 这个集合为只读视图，外部线程只能删除元素，不能增加，并且集合不是线程安全的，以避免多线程并发写入导致的问题。
 
-- `Set<SelectionKey> publicKeys`：
-  - `publicKeys` 是 `keys` 的不可变视图，外部线程可以通过它获取所有注册到该 `Selector` 上的 `SelectionKey`。
+**`Set<SelectionKey> publicKeys`：**
+
+- `publicKeys` 是 `keys` 的不可变视图，外部线程可以通过它获取所有注册到该 `Selector` 上的 `SelectionKey`。
 
 **这里需要重点关注抽象类**`sun.nio.ch.SelectorImpl`**中的**`selectedKeys`**和**`publicSelectedKeys`**这两个字段，注意它们的类型都是**`HashSet`**，一会优化的就是这里！！！！**
 
@@ -471,16 +472,20 @@ private void processSelectedKey(SelectionKey k, AbstractNioChannel ch) {
 
 Netty 这里使用的判断方法很巧妙`if ((readyOps & SelectionKey.OP_CONNECT) != 0)`，用于判断就绪操作集和连接操作的位与运算是否为 1，如果是，则说明当前就绪操作集中有连接操作。
 
-![img](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410301623538.png)
+```java
+int ops = k.interestOps();
+ops &= ~SelectionKey.OP_CONNECT;
+k.interestOps(ops);
+```
 
 这三行代码旨在取消对 OP_CONNECT 的监听，因为 连接是一次性的操作，一旦连接成功，后续就不需要再关注连接操作。如果在连接成功后不移除 `OP_CONNECT`，那么下次调用 `Selector.select()` 时会无条件返回，因为该键仍然被标记为可连接。这样可能导致无效的轮询和资源浪费。
 
-与连接操作不同，OP_WRITE 和 OP_READ 是可以多次出现的事件。通道可以随时准备好读取或写入数据。
+与连接操作（OP_CONNECT）不同，OP_WRITE 和 OP_READ 是可以多次出现的事件。通道可以随时准备好读取或写入数据。
 
 - **OP_WRITE**：通道可能在发送数据后会再次准备好进行写入（例如，发送缓冲区有空余空间）。因此，保持 `OP_WRITE` 状态是合理的，以便能在有新的数据需要写入时及时通知。
 - **OP_READ**：通道可以随时准备好读取数据，保持 `OP_READ` 状态可以确保在有新数据到达时，能够及时读取。
 
-::: tip 操作标志的管理
+::: tip 操作标志（OP_****）的管理手段
 
 - **动态调整**：对于 `OP_WRITE` 和 `OP_READ`，它们的状态是动态的，可能会在通道的生命周期内多次变化。通过管理这两个状态，可以确保在数据准备好时能够及时进行操作。
 
@@ -492,7 +497,9 @@ Netty 这里使用的判断方法很巧妙`if ((readyOps & SelectionKey.OP_CONNE
 
 我们再次回到 `processSelectedKeys` 的主流程，接下来会判断 `needsToSelectAgain` 决定是否需要重新轮询。如果 `needsToSelectAgain == true`，会调用 `selectAgain()` 方法进行重新轮询，该方法会将 `needsToSelectAgain` 再次置为 `false`，然后调用 `selectorNow()` 后立即返回。
 
-我们回顾一下 Reactor 线程的主流程，会发现每次在处理 I/O 事件之前，`needsToSelectAgain` 都会被设置为 `false`。那么，在什么场景下 `needsToSelectAgain` 会再次设置为 `true` 呢？我们通过查找变量的引用，最终定位到 `AbstractChannel#doDeregister`。该方法的作用是将 `Channel` 从当前注册的 `Selector` 对象中移除，方法内部可能会把 `needsToSelectAgain` 设置为 `true`，具体源码如下：
+我们回顾一下 Reactor 线程的主流程，会发现每次在处理 I/O 事件之前，`needsToSelectAgain` 都会被设置为 `false`。
+
+那么，**在什么场景下 `needsToSelectAgain` 会再次设置为 `true` 呢？** 我们通过查找变量的引用，最终定位到 `AbstractChannel#doDeregister`。该方法的作用是将 `Channel` 从当前注册的 `Selector` 对象中移除，方法内部可能会把 `needsToSelectAgain` 设置为 `true`，具体源码如下：
 
 ```java
 protected void doDeregister() throws Exception {

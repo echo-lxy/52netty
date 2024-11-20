@@ -100,7 +100,7 @@ b.group(bossGroup, workerGroup)
 
 在这个模型中，一个 `Channel` 只能分配给一个固定的 `Reactor`。一个 `Reactor` 负责处理多个 `Channel` 上的 IO 就绪事件，`Reactor` 与 `Channel` 之间的对应关系如下图所示：
 
-<img src="https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410311607161.png?x-oss-process=image/watermark,image_aW1nL3dhdGVyLnBuZw==,g_ne,x_1,y_1" alt="image-20241030201633937" style="zoom:33%;" />
+<img src="https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202411162019538.png?x-oss-process=image/watermark,image_aW1nL3dhdGVyLnBuZw==,g_ne,x_1,y_1" alt="image-20241030201633937" style="zoom:33%;" />
 
 而在一个 **Sub Reactor** 上注册了多个 `NioSocketChannel` 后，**Netty** 不可能在单个 `NioSocketChannel` 上无限制地处理数据。为了将读取数据的机会均匀分摊给其他 `NioSocketChannel`，因此需要限定每个 `NioSocketChannel` 上的最大读取次数。
 
@@ -280,7 +280,7 @@ public final void read() {
 
 首先，通过 `config()` 获取客户端 `NioSocketChannel` 的 Channel 配置类 `NioSocketChannelConfig`。接着，通过 `pipeline()` 获取 `NioSocketChannel` 的 pipeline。在 Netty 服务端模板 EchoServer 所举的示例中，`NioSocketChannel` 的 pipeline 中只有一个 `EchoChannelHandler`。
 
-<img src="https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410311650961.png?x-oss-process=image/watermark,image_aW1nL3dhdGVyLnBuZw==,g_nw,x_1,y_1" alt="image-20241031165026880" style="zoom:50%;" />
+<img src="https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202411201341422.png?x-oss-process=image/watermark,image_aW1nL3dhdGVyLnBuZw==,g_nw,x_1,y_1" alt="image-20241031165026880" style="zoom:50%;" />
 
 ### 分配 DirectByteBuffer 接收网络数据
 

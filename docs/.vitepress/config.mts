@@ -174,12 +174,8 @@ export default defineConfig({
                     link: "/main_task/network_communication_layer/Channel.md",
                   },
                   {
-                    text: "Netty Selector 源码解析",
-                    link: "/main_task/network_communication_layer/Selector.md",
-                  },
-                  {
-                    text: "Netty EventLoop 源码解析",
-                    link: "/main_task/network_communication_layer/EventLoop.md",
+                    text: "深入分析 Netty 对 JDK NIO 的封装与优化",
+                    link: "/main_task/network_communication_layer/Exploring_Netty_NIO_Wrapper.md",
                   },
                 ],
               },
@@ -243,7 +239,7 @@ export default defineConfig({
                   //   link: "/main_task/service_orchestration_layer/channelhandler.md",
                   // },
                   // {
-                  //   text: "分拣员的工作台：ChannelHandlerContext",
+                  //   text: "分拣操作台：ChannelHandlerContext",
                   //   link: "/main_task/service_orchestration_layer/ChannelHandlerContext.md",
                   // },
                   // {

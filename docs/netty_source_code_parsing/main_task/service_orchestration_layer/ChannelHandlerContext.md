@@ -1,6 +1,4 @@
-
-
-# 分拣员操作台：ChannelHandlerContext
+# 分拣操作台：ChannelHandlerContext
 
 ## ChannelHandlerContext 简介
 
@@ -16,46 +14,42 @@
 
 先来看看接口，在后面会详细介绍各个类
 
-* `ChannelHandlerContext` 包裹这一个 `ChannelHandler`, `ChannelHandlerContext` 必属于一个管道 `ChannelPipeline`。
+- `ChannelHandlerContext` 包裹这一个 `ChannelHandler`, `ChannelHandlerContext` 必属于一个管道 `ChannelPipeline`。
 
-> - 这些都是在  `ChannelHandlerContext` 创建的时候就绑定的。
+> - 这些都是在 `ChannelHandlerContext` 创建的时候就绑定的。
 > - 因为`ChannelHandlerContext`获取到对应的管道，因此动态修改它所属的`ChannelPipeline`。
 
-* `ChannelHandlerContext` 继承 `ChannelInboundInvoker` 和 `ChannelOutboundInvoker`
+- `ChannelHandlerContext` 继承 `ChannelInboundInvoker` 和 `ChannelOutboundInvoker`
 
 > - 表示`ChannelHandlerContext` 也可以发送 `IO` 事件，它可以通知所属的`ChannelPipeline` 最接近的处理程序器处理 `IO` 事件。
 > - 对于入站事件，最接近的处理程序器就是当前 `ChannelHandler` 在管道中下一个入站处理器`ChannelInboundHandler`。
 > - 对于出站事件，最接近的处理程序器就是当前 `ChannelHandler` 在管道中上一个出站处理器`ChannelOutboundHandler`。
 > - 其实 `ChannelPipeline` 的拦截器功能，就是通过`ChannelHandlerContext`实现的，因为由`ChannelHandlerContext`决定是否要调用列表中的下一个处理器处理。
 
-* AttributeMap 接口（详细内容请阅读 【TODO】）
+- AttributeMap 接口（详细内容请阅读 【TODO】）
 
-  * `AttributeMap` 接口用于存储和管理 `ChannelHandlerContext` 的一些附加属性。属性的管理是线程安全的，可以用来保存用户会话信息或其他上下文数据，以便在处理不同事件时共享这些信息。其常用方法包括：
+  - `AttributeMap` 接口用于存储和管理 `ChannelHandlerContext` 的一些附加属性。属性的管理是线程安全的，可以用来保存用户会话信息或其他上下文数据，以便在处理不同事件时共享这些信息。其常用方法包括：
     - `attr(AttributeKey<T> key)`：获取指定键的属性。
     - `hasAttr(AttributeKey<T> key)`：检查是否存在指定键的属性。
 
-  
-
-  
-
-## ChannelHandlerContext  
+## ChannelHandlerContext
 
 ### 源码注释
 
 `ChannelHandlerContext` 是 Netty 中的一个重要接口，它允许 `ChannelHandler` 与其所属的 `ChannelPipeline` 及其他处理器进行交互。以下是其源码中的核心点总结：
 
-* 事件通知
-  * 通过 `ChannelHandlerContext` 可以通知 `ChannelPipeline` 中的下一个 `ChannelHandler`，以此实现事件在管道中的流动。
-  * `ChannelPipeline` 控制事件的流向，`ChannelHandlerContext` 作为连接点，方便通知管道中的下一个处理器。
-* 动态修改 Pipeline
-  * 通过 `pipeline()` 方法可以获取 `ChannelHandler` 所属的 `ChannelPipeline`，并可在运行时插入、移除或替换管道中的处理器，方便实现动态调整。
-* 上下文持久化
-  * 可以将 `ChannelHandlerContext` 保留用于后续操作。例如，在非处理器方法（甚至不同线程）中触发事件。
-* 存储状态信息
-  * `attr(AttributeKey)` 方法可以存储和访问与 `ChannelHandler`/`Channel` 关联的状态信息，以便于状态管理和信息共享。
-* 多上下文支持
-  * 单个 `ChannelHandler` 实例可以被添加到多个 `ChannelPipeline` 中，从而关联多个 `ChannelHandlerContext`。此时，该实例可以通过不同的 `ChannelHandlerContext` 被调用。
-  * 为了安全地支持多上下文的场景，应使用 `@Sharable` 注解。
+- 事件通知
+  - 通过 `ChannelHandlerContext` 可以通知 `ChannelPipeline` 中的下一个 `ChannelHandler`，以此实现事件在管道中的流动。
+  - `ChannelPipeline` 控制事件的流向，`ChannelHandlerContext` 作为连接点，方便通知管道中的下一个处理器。
+- 动态修改 Pipeline
+  - 通过 `pipeline()` 方法可以获取 `ChannelHandler` 所属的 `ChannelPipeline`，并可在运行时插入、移除或替换管道中的处理器，方便实现动态调整。
+- 上下文持久化
+  - 可以将 `ChannelHandlerContext` 保留用于后续操作。例如，在非处理器方法（甚至不同线程）中触发事件。
+- 存储状态信息
+  - `attr(AttributeKey)` 方法可以存储和访问与 `ChannelHandler`/`Channel` 关联的状态信息，以便于状态管理和信息共享。
+- 多上下文支持
+  - 单个 `ChannelHandler` 实例可以被添加到多个 `ChannelPipeline` 中，从而关联多个 `ChannelHandlerContext`。此时，该实例可以通过不同的 `ChannelHandlerContext` 被调用。
+  - 为了安全地支持多上下文的场景，应使用 `@Sharable` 注解。
 
 ### 核心方法
 
@@ -128,13 +122,13 @@ private static final int INIT = 0;
 
 private volatile int handlerState = INIT;
 
-private static final AtomicIntegerFieldUpdater<AbstractChannelHandlerContext> HANDLER_STATE_UPDATER 
+private static final AtomicIntegerFieldUpdater<AbstractChannelHandlerContext> HANDLER_STATE_UPDATER
 = AtomicIntegerFieldUpdater.newUpdater(AbstractChannelHandlerContext.class, "handlerState");
 ```
 
-* 状态一共分为 `4` 种: `INIT`,`ADD_PENDING`,`ADD_COMPLETE`和`REMOVE_COMPLETE`。
+- 状态一共分为 `4` 种: `INIT`,`ADD_PENDING`,`ADD_COMPLETE`和`REMOVE_COMPLETE`。
 
-* 通过 `handlerState` 和 `HANDLER_STATE_UPDATER`, 采用 `CAS` 的方式原子化更新属性，这样就不用加锁处理并发问题。
+- 通过 `handlerState` 和 `HANDLER_STATE_UPDATER`, 采用 `CAS` 的方式原子化更新属性，这样就不用加锁处理并发问题。
 
 【TODO】这些状态有啥用
 
@@ -142,11 +136,11 @@ private static final AtomicIntegerFieldUpdater<AbstractChannelHandlerContext> HA
 
 即被 final 修饰的属性，在创建 ChannelHandlerContext 对象时就需要赋值。
 
-* DefaultChannelPipeline pipeline：当前上下文所属的管道 `pipeline`, 而且它的类型就定死了是 `DefaultChannelPipeline` 类。
-* `name` ：表示上下文的名称
-* `ordered` 表示上下文的执行器是不是有序的 【TODO】
-* `executor` 上下文的执行器，如果这个值是 null,那么上下文的执行器用的就是所属通道 Channel 的事件轮询器。
-* executionMask 表示事件执行器 ChannelHandler 的执行标记，用来判断是否跳过执行器 `ChannelHandler` 的某些事件处理方法。
+- DefaultChannelPipeline pipeline：当前上下文所属的管道 `pipeline`, 而且它的类型就定死了是 `DefaultChannelPipeline` 类。
+- `name` ：表示上下文的名称
+- `ordered` 表示上下文的执行器是不是有序的 【TODO】
+- `executor` 上下文的执行器，如果这个值是 null,那么上下文的执行器用的就是所属通道 Channel 的事件轮询器。
+- executionMask 表示事件执行器 ChannelHandler 的执行标记，用来判断是否跳过执行器 `ChannelHandler` 的某些事件处理方法。
 
 ### 重要方法
 
@@ -170,9 +164,9 @@ AbstractChannelHandlerContext(DefaultChannelPipeline pipeline, EventExecutor exe
 
 #### 状态相关方法
 
-* 等待添加
+- 等待添加
 
-  * ```Java
+  - ```Java
      final void setAddPending() {
          boolean updated = HANDLER_STATE_UPDATER.compareAndSet(this, INIT, ADD_PENDING);
          // 这应该总是为真，因为它必须在 setAddComplete()或 setRemoved()之前调用。
@@ -180,11 +174,11 @@ AbstractChannelHandlerContext(DefaultChannelPipeline pipeline, EventExecutor exe
      }
     ```
 
-  * 将上下文的状态变成等待添加状态 `ADD_PENDING`。
+  - 将上下文的状态变成等待添加状态 `ADD_PENDING`。
 
-* 已添加
+- 已添加
 
-  * ```Java
+  - ```Java
      final boolean setAddComplete() {
          for (;;) {
              int oldState = handlerState;
@@ -200,11 +194,11 @@ AbstractChannelHandlerContext(DefaultChannelPipeline pipeline, EventExecutor exe
      }
     ```
 
-  * 通过`for (;;)` 死循环，采用 `CAS` 的方法，将上下文的状态变成已添加`ADD_COMPLETE`。只有已添加状态上下文的事件处理器 `ChannelHandler` 才能处理事件。
+  - 通过`for (;;)` 死循环，采用 `CAS` 的方法，将上下文的状态变成已添加`ADD_COMPLETE`。只有已添加状态上下文的事件处理器 `ChannelHandler` 才能处理事件。
 
-  * ```java
+  - ```java
      final void callHandlerAdded() throws Exception {
-      
+
          // 我们必须在调用 handlerAdded 之前调用 setAddComplete，将状态改成 REMOVE_COMPLETE，
          // 否则这个上下文对应的事件处理器将不会处理任何事件，因为状态不允许。
          if (setAddComplete()) {
@@ -213,9 +207,9 @@ AbstractChannelHandlerContext(DefaultChannelPipeline pipeline, EventExecutor exe
      }
     ```
 
-  * ```Java
+  - ```Java
      final void callHandlerAdded() throws Exception {
-      
+
          // 我们必须在调用 handlerAdded 之前调用 setAddComplete。否则，如果 handlerAdded 方法生成任何管道事件，ctx.handler（） 将错过它们，因为状态不允许这样做
          if (setAddComplete()) {
              handler().handlerAdded(this);
@@ -223,15 +217,15 @@ AbstractChannelHandlerContext(DefaultChannelPipeline pipeline, EventExecutor exe
      }
     ```
 
-  * 将状态变成已添加，如果设置成功就调用 `handler().handlerAdded(this)` 方法，通知事件处理器已经被添加到管道上了。
+  - 将状态变成已添加，如果设置成功就调用 `handler().handlerAdded(this)` 方法，通知事件处理器已经被添加到管道上了。
 
-* 已删除
+- 已删除
 
-  * ```java
+  - ```java
      final void setRemoved() {
          handlerState = REMOVE_COMPLETE;
      }
-      
+
      final void callHandlerRemoved() throws Exception {
          try {
              // 只有 handlerState 状态变成 ADD_COMPLETE 时，才会调用 handler().handlerRemoved(this)；
@@ -246,7 +240,7 @@ AbstractChannelHandlerContext(DefaultChannelPipeline pipeline, EventExecutor exe
      }
     ```
 
-  * 将上下文状态变成已删除。如果上下文状态之前的状态是已添加，那么就会调用 `handler().handlerRemoved(this)` 方法。也就是说，只有之前调用过 `handlerAdded(…)`方法，之后才会调用`handlerRemoved(…)` 方法。
+  - 将上下文状态变成已删除。如果上下文状态之前的状态是已添加，那么就会调用 `handler().handlerRemoved(this)` 方法。也就是说，只有之前调用过 `handlerAdded(…)`方法，之后才会调用`handlerRemoved(…)` 方法。
 
 #### 发送`IO`事件
 
@@ -370,8 +364,8 @@ AbstractChannelHandlerContext(DefaultChannelPipeline pipeline, EventExecutor exe
 
 - `channelReadComplete` 读完成的入站事件
 - `channelWritabilityChanged` 可读状态改变的入站事件
-- `read`     设置读的出站事件
-- `flush`     刷新数据的出站事件
+- `read` 设置读的出站事件
+- `flush` 刷新数据的出站事件
 
 ```java
     public ChannelHandlerContext fireChannelReadComplete() {
@@ -409,8 +403,6 @@ AbstractChannelHandlerContext(DefaultChannelPipeline pipeline, EventExecutor exe
 >
 > - 上面是通过 `executor.execute(new Runnable())`，每次都创建新的 `Runnable` 对象。
 > - 而这里是通过一个 `invokeTasks` 对象，不用每次都创建新的 `Runnable` 对象，减少对象创建的实例。
-
-
 
 ```java
  private static final class Tasks {
@@ -738,8 +730,6 @@ skipContext
 
 在 `DefaultChannelPipeline` 中
 
-
-
 ```csharp
     @UnstableApi
     protected void incrementPendingOutboundBytes(long size) {
@@ -761,8 +751,6 @@ skipContext
 > 都是调用 `ChannelOutboundBuffer` 类的对应方法。
 
 在 `ChannelOutboundBuffer` 中
-
-
 
 ```java
     void incrementPendingOutboundBytes(long size) {
@@ -832,7 +820,7 @@ skipContext
 ```Java
 abstract class AbstractChannelHandlerContext implements ChannelHandlerContext, ResourceLeakHint {
 	......
-        
+
     private final int executionMask;
 
 	......
@@ -980,7 +968,7 @@ private static int mask0(Class<? extends ChannelHandler> handlerType) {
 }
 ```
 
-计算 ChannelHandler 的执行掩码 mask0 方法虽然比较长，但是逻辑却十分简单。在本文的第三小节《3. pipeline中的事件分类》中，笔者为大家详细介绍了各种事件类型的掩码表示，这里我来看下如何利用这些基本事件掩码来计算出 ChannelHandler 的执行掩码的。
+计算 ChannelHandler 的执行掩码 mask0 方法虽然比较长，但是逻辑却十分简单。在本文的第三小节《3. pipeline 中的事件分类》中，笔者为大家详细介绍了各种事件类型的掩码表示，这里我来看下如何利用这些基本事件掩码来计算出 ChannelHandler 的执行掩码的。
 
 如果 ChannelHandler 是 ChannelInboundHandler 类型的，那么首先会将所有 Inbound 事件掩码设置进执行掩码 mask 中。
 
@@ -1083,8 +1071,6 @@ public class ChannelInboundHandlerAdapter extends ChannelHandlerAdapter implemen
     }
 }
 ```
-
-
 
 ## HeadContext
 
@@ -1352,4 +1338,3 @@ protected void onUnhandledInboundMessage(Object msg) {
     }
 }
 ```
-

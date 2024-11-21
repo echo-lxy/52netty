@@ -87,6 +87,7 @@
 - [GitHub - sanshengshui/netty-learning-example: :egg: Netty 实践学习案例，见微知著！带着你的心，跟着教程。我相信你行欧。](https://github.com/sanshengshui/netty-learning-example)
 - [GitHub - yongshun/learn_netty_source_code: Netty 源码分析教程](https://github.com/yongshun/learn_netty_source_code)
 - [Introduction · Essential Netty in Action 《Netty 实战(精髓)》](https://waylau.gitbooks.io/essential-netty-in-action/content/)
+- [netty - 标签 - 自带buff - 博客园](https://www.cnblogs.com/brandonli/tag/netty/)
 - [跟闪电侠学 Netty：Netty 即时聊天实战与底层原理 (豆瓣)](https://book.douban.com/subject/35752082/)
 - [Netty 核心原理剖析与 RPC 实践](https://learn.lianglianglee.com/%E4%B8%93%E6%A0%8F/Netty%20%E6%A0%B8%E5%BF%83%E5%8E%9F%E7%90%86%E5%89%96%E6%9E%90%E4%B8%8E%20RPC%20%E5%AE%9E%E8%B7%B5-%E5%AE%8C)
 - [netty/netty at netty-4.1.56.Final](https://github.com/netty/netty/tree/netty-4.1.56.Final)

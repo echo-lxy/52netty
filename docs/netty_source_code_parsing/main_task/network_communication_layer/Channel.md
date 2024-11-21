@@ -222,7 +222,262 @@ protected void doRegister() throws Exception {
 
 <img src="https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202411211511962.png" alt="image-20241121151155853" style="zoom: 50%;" />
 
-## Channel#Read
+## Channel#bind
+
+`bind`方法的调用栈如下:
+
+```java
+io.netty.channel.AbstractChannel#bind(java.net.SocketAddress)
+io.netty.channel.DefaultChannelPipeline#bind(java.net.SocketAddress)
+io.netty.channel.AbstractChannelHandlerContext#bind(java.net.SocketAddress)　　io.netty.channel.AbstractChannelHandlerContext#bind(java.net.SocketAddress, io.netty.channel.ChannelPromise)
+io.netty.channel.AbstractChannelHandlerContext#invokeBind
+io.netty.channel.DefaultChannelPipeline.HeadContext#bind
+io.netty.channel.AbstractChannel.AbstractUnsafe#bind
+io.netty.channel.socket.nio.NioSocketChannel#doBind
+io.netty.channel.socket.nio.NioSocketChannel#doBind0
+```
+
+为了简明地展示调用关系，这个调用栈省略了一些细节，可能存在多个 `AbstractChannelHandlerContext` 的方法在不同线程中被调用。在以后描述调用栈时，也会忽略这一点，不再赘述。
+
+`io.netty.channel.AbstractChannel.AbstractUnsafe#bind` 执行了主要的 `bind` 逻辑，它会调用 `doBind`，然后当 `channel` 的状态从 `inactive` 变为 `active` 时，调用 `pipeline` 的 `fireChannelActive` 方法触发 `channelActive` 事件。`doBind` 是 `io.netty.channel.AbstractChannel` 定义的抽象方法。`NioSocketChannel` 只需要实现这个方法，整个 `bind` 功能就完整了。
+
+```java
+@Override
+protected void doBind(SocketAddress localAddress) throws Exception {
+    doBind0(localAddress);
+}
+private void doBind0(SocketAddress localAddress) throws Exception {
+    if (PlatformDependent.javaVersion() >= 7) {
+        SocketUtils.bind(javaChannel(), localAddress);
+    } else {
+        SocketUtils.bind(javaChannel().socket(), localAddress);
+    }
+}
+```
+
+`SocketUtils` 封装了通过 `AccessController` 调用 JDK 的 `socket` API 接口，实际上还是调用 `Socket` 或 `SocketChannel` 的 `bind` 方法。`Nio` 的三个 `Channel` 类实现 `doBind` 的代码几乎相同。
+
+## Channel#connect
+
+`connect`的调用栈如下:
+
+```java
+io.netty.channel.AbstractChannel#connect(java.net.SocketAddress)
+io.netty.channel.DefaultChannelPipeline#connect(java.net.SocketAddress)
+io.netty.channel.AbstractChannelHandlerContext#connect(java.net.SocketAddress)
+io.netty.channel.AbstractChannelHandlerContext#connect(java.net.SocketAddress, io.netty.channel.ChannelPromise)
+io.netty.channel.AbstractChannelHandlerContext#connect(java.net.SocketAddress, java.net.SocketAddress, io.netty.channel.ChannelPromise)
+io.netty.channel.AbstractChannelHandlerContext#invokeConnect
+io.netty.channel.DefaultChannelPipeline.HeadContext#connect
+io.netty.channel.nio.AbstractNioChannel.AbstractNioUnsafe#connect
+io.netty.channel.socket.nio.NioSocketChannel#doConnect
+```
+
+`connect` 的主要逻辑在 `io.netty.channel.nio.AbstractNioChannel.AbstractNioUnsafe#connect` 中实现，流程如下：
+
+1. 调用 `doConnect` 方法，这个方法是 `AbstractNioChannel` 定义的抽象方法。
+2. 如果 `doConnect` 成功，且 `channel` 的状态从 `inactive` 变为 `active`，则调用 `pipeline` 的 `fireChannelActive` 方法触发 `channelActive` 事件。
+3. 如果 `doConnect` 失败，调用 `close` 关闭 `channel`。
+
+在 `io.netty.channel.socket.nio.NioSocketChannel#doConnect` 中，实际是调用了 `socket` 的 `connect` API。以下是 `connect` 的关键代码：
+
+```java
+@Override
+public final void connect(
+        final SocketAddress remoteAddress, final SocketAddress localAddress, final ChannelPromise promise) {
+    if (!promise.setUncancellable() || !ensureOpen(promise)) {
+        return;
+    }
+
+    try {
+        if (connectPromise != null) {
+            // Already a connect in process.
+            throw new ConnectionPendingException();
+        }
+
+        boolean wasActive = isActive();
+        if (doConnect(remoteAddress, localAddress)) {
+            fulfillConnectPromise(promise, wasActive);
+        } else {
+            connectPromise = promise;
+            requestedRemoteAddress = remoteAddress;
+
+            // Schedule connect timeout.
+            int connectTimeoutMillis = config().getConnectTimeoutMillis();
+            if (connectTimeoutMillis > 0) {
+                connectTimeoutFuture = eventLoop().schedule(new Runnable() {
+                    @Override
+                    public void run() {
+                        ChannelPromise connectPromise = AbstractNioChannel.this.connectPromise;
+                        ConnectTimeoutException cause =
+                                new ConnectTimeoutException("connection timed out: " + remoteAddress);
+                        if (connectPromise != null && connectPromise.tryFailure(cause)) {
+                            close(voidPromise());
+                        }
+                    }
+                }, connectTimeoutMillis, TimeUnit.MILLISECONDS);
+            }
+
+            promise.addListener(new ChannelFutureListener() {
+                @Override
+                public void operationComplete(ChannelFuture future) throws Exception {
+                    if (future.isCancelled()) {
+                        if (connectTimeoutFuture != null) {
+                            connectTimeoutFuture.cancel(false);
+                        }
+                        connectPromise = null;
+                        close(voidPromise());
+                    }
+                }
+            });
+        }
+    } catch (Throwable t) {
+        promise.tryFailure(annotateConnectException(t, remoteAddress));
+        closeIfClosed();
+    }
+}
+
+private void fulfillConnectPromise(ChannelPromise promise, boolean wasActive) {
+    if (promise == null) {
+        return;
+    }
+    boolean active = isActive();
+    boolean promiseSet = promise.trySuccess();
+
+    if (!wasActive && active) {
+        pipeline().fireChannelActive();
+    }
+    if (!promiseSet) {
+        close(voidPromise());
+    }
+}
+```
+
+第 14、15 行和整个 `fulfillConnectPromise` 方法处理的是正常流程。
+
+第 18-52 行处理的是异常流程。代码虽然较多，但总结起来就是一句话：设置 `promise` 返回错误，确保能够调用 `close` 方法。
+
+`io.netty.channel.socket.nio.NioSocketChannel#doConnect` 的实现与 `doBind` 的实现类似：
+
+```java
+@Override
+protected boolean doConnect(SocketAddress remoteAddress, SocketAddress localAddress) throws Exception {
+    if (localAddress != null) {
+        doBind0(localAddress);
+    }
+
+    boolean success = false;
+    try {
+        boolean connected = SocketUtils.connect(javaChannel(), remoteAddress);
+        if (!connected) {
+            selectionKey().interestOps(SelectionKey.OP_CONNECT);
+        }
+        success = true;
+        return connected;
+    } finally {
+        if (!success) {
+            doClose();
+        }
+    }
+}
+```
+
+在第 11 行，注册了 `OP_CONNECT` 事件。由于 `channel` 在初始化时被设置为非阻塞模式，`connect` 方法可能会返回 `false`，如果返回 `false` 表示 `connect` 操作尚未完成，需要通过 `selector` 关注 `OP_CONNECT` 事件，将 `connect` 变成一个异步过程。只有在异步调用 `io.netty.channel.nio.AbstractNioChannel.AbstractNioUnsafe#finishConnect` 后，`connect` 操作才算完成。`finishConnect` 在 `eventLoop` 中被调用：
+
+```java
+// io.netty.channel.nio.NioEventLoop#processSelectedKey(java.nio.channels.SelectionKey, io.netty.channel.nio.AbstractNioChannel)
+if ((readyOps & SelectionKey.OP_CONNECT) != 0) {
+    int ops = k.interestOps();
+    ops &= ~SelectionKey.OP_CONNECT;
+    k.interestOps(ops);
+    unsafe.finishConnect();
+}
+```
+
+`finishConnect` 的实现如下：
+
+```java
+// io.netty.channel.nio.AbstractNioChannel.AbstractNioUnsafe#finishConnect
+@Override
+public final void finishConnect() {
+    // Note this method is invoked by the event loop only if the connection attempt was
+    // neither cancelled nor timed out.
+    
+    assert eventLoop().inEventLoop();
+    try {
+        boolean wasActive = isActive();
+        doFinishConnect();
+        fulfillConnectPromise(connectPromise, wasActive);
+    } catch (Throwable t) {
+        fulfillConnectPromise(connectPromise, annotateConnectException(t, requestedRemoteAddress));
+    } finally {
+        // Check for null as the connectTimeoutFuture is only created if a connectTimeoutMillis > 0 is used
+        // See https://github.com/netty/netty/issues/1770
+        if (connectTimeoutFuture != null) {
+            connectTimeoutFuture.cancel(false);
+        }
+        connectPromise = null;
+    }
+}
+```
+
+`doFinishConnect` 方法：
+
+```java
+// io.netty.channel.socket.nio.NioSocketChannel#doFinishConnect
+@Override
+protected void doFinishConnect() throws Exception {
+    if (!javaChannel().finishConnect()) {
+        throw new Error();
+    }
+}
+```
+
+- 第 9-11 行是 `finishConnect` 的核心逻辑。首先调用 `doFinishConnect` 执行连接完成后的操作，`NioSocketChannel` 实现中会检查连接是否真的已经完成（第 27-29 行）。然后，调用 `fulfillConnectPromise` 来触发事件，并设置 `promise` 返回值。
+- 在前面分析 `netty.channel.nio.AbstractNioChannel.AbstractNioUnsafe#connect` 时，可以看到在 `doConnect` 调用成功后会立即调用该方法。此方法被调用两次是为了确保 `channelActive` 事件一定会被触发一次。
+
+------
+
+## `localAddress` 和 `remoteAddress` 的实现：
+
+这两个方法几乎相同，这里只分析 `localAddress`。其调用栈如下：
+
+```java
+io.netty.channel.AbstractChannel#localAddress
+io.netty.channel.AbstractChannel.AbstractUnsafe#localAddress
+io.netty.channel.socket.nio.NioSocketChannel#localAddress0
+```
+
+该方法不会触发任何事件，因此没有通过 `pipeline` 调用 `unsafe`，它直接调用 `unsafe` 的方法：
+
+```java
+// io.netty.channel.AbstractChannel#localAddress
+@Override
+public SocketAddress localAddress() {
+    SocketAddress localAddress = this.localAddress;
+    if (localAddress == null) {
+        try {
+            this.localAddress = localAddress = unsafe().localAddress();
+        } catch (Throwable t) {
+            // Sometimes fails on a closed socket in Windows.
+            return null;
+        }
+    }
+    return localAddress;
+}
+```
+
+在第 7 行，直接调用了 `unsafe` 的 `localAddress` 方法，这个方法在 `AbstractUnsafe` 中实现，它调用了 `localAddress0`，这是一个 `protected` 的抽象方法，在 `NioSocketChannel` 中的实现如下：
+
+```java
+// io.netty.channel.socket.nio.NioSocketChannel#localAddress0
+@Override
+protected SocketAddress localAddress0() {
+    return javaChannel().socket().getLocalSocketAddress();
+}
+```
+
+## Channel#read
 
 ### Nio Channel 通知 eventLoop 开始读数据
 
@@ -547,31 +802,547 @@ protected int doWriteBytes(ByteBuf buf) throws Exception {
 
 这个实现非常简单，利用 `ByteBuf` 的能力从 `SocketChannel` 中读取字节流
 
-## AttributeMap 接口
+## Channel#write&flush
+
+写数据是 NIO `Channel` 实现的另一个比较复杂的功能。每个 `channel` 都有一个 `outboundBuffer`，即输出缓冲区。当调用 `channel` 的 `write` 方法写入数据时，这些数据会经过一系列的 `ChannelOutboundHandler` 处理，并最终放入这个缓冲区中，但此时数据并没有真正写入到 `socket channel` 中。只有在调用 `channel` 的 `flush` 方法时，`flush` 会将 `outboundBuffer` 中的数据真正写入到 `socket channel`。
+
+在正常情况下，`flush` 之后，数据已经被真正写入。但在使用 `Selector` 和非阻塞 `socket` 的方式写数据时，写操作变得复杂。操作系统为每个 `socket` 维护了一个数据发送缓冲区，其长度由 `SO_SNDBUF` 参数定义。每次发送数据时，数据会先写入这个发送缓冲区，然后由操作系统负责将缓冲区中的数据发送出去，并清理该缓冲区。
+
+当向发送缓冲区写入数据的速率超过操作系统的发送速率时，缓冲区可能会被填满。在非阻塞模式下，这种情况表现为：调用 `socket` 的 `write` 方法写入长度为 `n` 的数据，实际写入的数据长度 `m` 可能满足 `0 <= m <= n`。此时，剩余的 `n - m` 数据未能写入到 `socket`，而数据必须以正确的顺序完整地写入。
+
+为了解决这个问题，`outboundBuffer` 被设计用来存储未能写入的数据。当 `发送缓冲区` 中有足够的空间时，剩余的数据会按照正确的顺序从 `outboundBuffer` 中取出，继续写入到 `socket` 中。
+
+### 把数据写到outboundBuffer中
+
+`write`调用栈
+
+```shell
+io.netty.channel.AbstractChannel#write(java.lang.Object)
+io.netty.channel.DefaultChannelPipeline#write(java.lang.Object)
+io.netty.channel.AbstractChannelHandlerContext#write(java.lang.Object)
+io.netty.channel.AbstractChannelHandlerContext#write(java.lang.Object, io.netty.channel.ChannelPromise)
+io.netty.channel.AbstractChannelHandlerContext#write(java.lang.Object, boolean, io.netty.channel.ChannelPromise)
+io.netty.channel.AbstractChannelHandlerContext#invokeWrite
+io.netty.channel.DefaultChannelPipeline.HeadContext#write
+io.netty.channel.AbstractChannel.AbstractUnsafe#write
+```
+
+`write` 的主要逻辑在 `io.netty.channel.AbstractChannel.AbstractUnsafe#write` 中实现。该方法将要写的数据 `msg` 对象放入 `outboundBuffer` 中。
+
+在执行 `close` 时，Netty 不希望再有新的数据写入，避免引起不可预料的错误，因此会将 `outboundBuffer` 置为 `null`。在向 `outboundBuffer` 写入数据之前，会先检查它是否为 `null`，如果为 `null`，则会抛出错误。
+
+下面是 `write` 方法的实现：
 
 ```java
-/**
- * Holds {@link Attribute}s which can be accessed via {@link AttributeKey}.
- *
- * Implementations must be Thread-safe.
- */
-public interface AttributeMap {
-    /**
-     * Get the {@link Attribute} for the given {@link AttributeKey}. This method will never return null, but may return
-     * an {@link Attribute} which does not have a value set yet.
-     */
-    <T> Attribute<T> attr(AttributeKey<T> key);
+@Override
+public final void write(Object msg, ChannelPromise promise) {
+    assertEventLoop();
 
-    /**
-     * Returns {@code true} if and only if the given {@link Attribute} exists in this {@link AttributeMap}.
-     */
-    <T> boolean hasAttr(AttributeKey<T> key);
+    ChannelOutboundBuffer outboundBuffer = this.outboundBuffer;
+    if (outboundBuffer == null) {
+        try {
+            // release message now to prevent resource-leak
+            ReferenceCountUtil.release(msg);
+        } finally {
+            // If the outboundBuffer is null we know the channel was closed and so
+            // need to fail the future right away. If it is not null the handling of the rest
+            // will be done in flush0()
+            // See https://github.com/netty/netty/issues/2362
+            safeSetFailure(promise,
+                           newClosedChannelException(initialCloseCause, "write(Object, ChannelPromise)"));
+        }
+        return;
+    }
+
+    int size;
+    try {
+        msg = filterOutboundMessage(msg);
+        size = pipeline.estimatorHandle().size(msg);
+        if (size < 0) {
+            size = 0;
+        }
+    } catch (Throwable t) {
+        try {
+            ReferenceCountUtil.release(msg);
+        } finally {
+            safeSetFailure(promise, t);
+        }
+        return;
+    }
+
+    outboundBuffer.addMessage(msg, size, promise);
 }
 ```
 
-## DefaultAttributeMap 抽象类
+第5至9行，对 `outboundBuffer` 进行检查，如果为 `null` 则抛出错误。这里有一个小细节：使用一个局部变量引用 `outboundBuffer`，以避免由于其他线程对 `this.outboundBuffer` 进行置空操作而引发错误。
 
-【TODO】
+在第14行，调用 `filterOutboundMessage` 对 `msg` 进行过滤。这个方法是 `protected` 的，默认实现什么都不做，直接返回输入的 `msg` 参数。子类可以覆盖这个方法，将 `msg` 转换为期望的类型。
+
+在第15行，计算 `msg` 的长度。
+
+在第25行，将 `msg` 放入 `outboundBuffer` 中。
+
+### 把数据真正写到 channel
+
+把数据真正写到 `channel`
+
+`flush`调用栈：
+
+```shell
+io.netty.channel.AbstractChannel#flush
+io.netty.channel.DefaultChannelPipeline#flush
+io.netty.channel.AbstractChannelHandlerContext#flush
+io.netty.channel.AbstractChannelHandlerContext#invokeFlush
+io.netty.channel.DefaultChannelPipeline.HeadContext#flush
+io.netty.channel.AbstractChannel.AbstractUnsafe#flush
+io.netty.channel.AbstractChannel.AbstractUnsafe#flush0
+io.netty.channel.socket.nio.NioSocketChannel#doWrite
+io.netty.channel.nio.AbstractNioByteChannel#doWrite
+io.netty.channel.socket.nio.NioSocketChannel#doWriteBytes
+```
+
+以上是 `io.netty.channel.socket.nio.NioSocketChannel` 的 `flush` 调用栈。对于 `io.netty.channel.socket.nio.NioDatagramChannel` 来说，从第8行开始，调用栈会有所不同：
+
+```shell
+...
+io.netty.channel.AbstractChannel.AbstractUnsafe#flush0
+io.netty.channel.nio.AbstractNioMessageChannel#doWrite
+io.netty.channel.socket.nio.NioDatagramChannel#doWriteMessage
+```
+
+
+
+#### 把 Byte 数据流写入 channel
+
+`io.netty.channel.socket.nio.NioSocketChannel#doWrite` 是处理 `Byte` 数据流的写逻辑，`io.netty.channel.nio.AbstractNioByteChannel#doWrite` 也是类似的逻辑。两者的不同之处在于：
+
+- 前者是在 `outboundBuffer` 可以转换为 `java.nio.ByteBuffer` 时执行。
+- 后者则是在 `outboundBuffer` 中的 `msg` 类型为 `ByteBuf` 或 `FileRegion` 时执行。
+
+除此之外，其他的逻辑是相同的：
+
+- 尽量将 `outboundBuffer` 中的数据写入 `channel`。
+- 如果 `channel` 无法写入数据，则在 `channel` 的 `SelectionKey` 上注册 `OP_WRITE` 事件，等待 `channel` 可写时再继续写入。
+- 如果写入次数超过限制，将 `flush` 操作包装成任务，放到 `eventLoop` 排队，等待再次执行。
+
+接下来，我们来看一下 `io.netty.channel.socket.nio.NioSocketChannel#doWrite` 的实现代码：
+
+```java
+@Override
+protected void doWrite(ChannelOutboundBuffer in) throws Exception {
+    for (;;) {
+        int size = in.size();
+        if (size == 0) {
+            // All written so clear OP_WRITE
+            clearOpWrite();
+            break;
+        }
+        long writtenBytes = 0;
+        boolean done = false;
+        boolean setOpWrite = false;
+
+        // Ensure the pending writes are made of ByteBufs only.
+        ByteBuffer[] nioBuffers = in.nioBuffers();
+        int nioBufferCnt = in.nioBufferCount();
+        long expectedWrittenBytes = in.nioBufferSize();
+        SocketChannel ch = javaChannel();
+
+        // Always us nioBuffers() to workaround data-corruption.
+        // See https://github.com/netty/netty/issues/2761
+        switch (nioBufferCnt) {
+            case 0:
+                // We have something else beside ByteBuffers to write so fallback to normal writes.
+                super.doWrite(in);
+                return;
+            case 1:
+                // Only one ByteBuf so use non-gathering write
+                ByteBuffer nioBuffer = nioBuffers[0];
+                for (int i = config().getWriteSpinCount() - 1; i >= 0; i --) {
+                    final int localWrittenBytes = ch.write(nioBuffer);
+                    if (localWrittenBytes == 0) {
+                        setOpWrite = true;
+                        break;
+                    }
+                    expectedWrittenBytes -= localWrittenBytes;
+                    writtenBytes += localWrittenBytes;
+                    if (expectedWrittenBytes == 0) {
+                        done = true;
+                        break;
+                    }
+                }
+                break;
+            default:
+                for (int i = config().getWriteSpinCount() - 1; i >= 0; i --) {
+                    final long localWrittenBytes = ch.write(nioBuffers, 0, nioBufferCnt);
+                    if (localWrittenBytes == 0) {
+                        setOpWrite = true;
+                        break;
+                    }
+                    expectedWrittenBytes -= localWrittenBytes;
+                    writtenBytes += localWrittenBytes;
+                    if (expectedWrittenBytes == 0) {
+                        done = true;
+                        break;
+                    }
+                }
+                break;
+        }
+
+        // Release the fully written buffers, and update the indexes of the partially written buffer.
+        in.removeBytes(writtenBytes);
+
+        if (!done) {
+            // Did not write all buffers completely.
+            incompleteWrite(setOpWrite);
+            break;
+        }
+    }
+}
+```
+
+第5至7行，如果 `outboundBuffer` 中已经没有数据了，调用 `clearOpWrite` 方法清除 `channel` `SelectionKey` 上的 `OP_WRITE` 事件。
+
+第15至17行，将 `outboundBuffer` 转换为 `ByteBuffer` 类型，并获取数据的长度。
+
+第25行，如果 `outboundBuffer` 不能转换为 `ByteBuffer`，则调用 `io.netty.channel.nio.AbstractNioByteChannel#doWrite` 执行写操作。
+
+第29至42行，45至57行的逻辑基本相同，都是尽量将 `ByteBuffer` 中的数据写入 `channel`。当满足以下任意一个条件时，结束本次写操作：
+
+1. `ByteBuffer` 中的数据已经写完，正常结束。
+2. `channel` 已经不能写入数据，需要等 `channel` 可以写入时继续执行写操作。
+3. 写入次数超过 `channel` 配置中的写入次数限制，需要选择合适的时机继续执行写操作。
+
+第62行，将已经写入到 `channel` 的数据从 `outboundBuffer` 中删除。
+
+第64至66行，如果数据没有写完，调用 `incompleteWrite` 处理未写完的情况。当 `setOpWrite` 为 `true` 时，在 `channel` 的 `SelectionKey` 上设置 `OP_WRITE` 事件，等待 `eventLoop` 触发该事件时再继续执行 `flush` 操作。否则，将 `flush` 操作包装成任务，放到 `eventLoop` 中排队执行。
+
+当 `NioEventLoop` 检测到 `OP_WRITE` 事件时，会调用 `processSelectedKey` 方法来处理：
+
+```java
+if ((readyOps & SelectionKey.OP_WRITE) != 0) {
+    ch.unsafe().forceFlush();
+}
+```
+
+`forceFlush`的调用栈如下
+
+```shell
+io.netty.channel.nio.AbstractNioChannel.AbstractNioUnsafe#forceFlush
+io.netty.channel.AbstractChannel.AbstractUnsafe#flush0
+io.netty.channel.socket.nio.NioSocketChannel#doWrite
+io.netty.channel.nio.AbstractNioByteChannel#doWrite
+io.netty.channel.socket.nio.NioSocketChannel#doWriteBytes
+```
+
+#### 把数据写入 UDP 类型的 channel
+
+`io.netty.channel.nio.AbstractNioMessageChannel#doWrite` 是数据报的写逻辑。相比于 `Byte` 流类型的数据，数据报的写逻辑要简单一些。它只是将 `outboundBuffer` 中的数据报依次写入到 `channel` 中。如果 `channel` 写满了，则在 `channel` 的 `SelectionKey` 上设置 `OP_WRITE` 事件，随后退出。之后，`OP_WRITE` 事件的处理逻辑与 `Byte` 流写逻辑相同。
+
+真正的写操作在 `io.netty.channel.socket.nio.NioDatagramChannel#doWriteMessage` 中实现。该方法的实现如下：
+
+```java
+@Override
+protected boolean doWriteMessage(Object msg, ChannelOutboundBuffer in) throws Exception {
+    final SocketAddress remoteAddress;
+    final ByteBuf data;
+    if (msg instanceof AddressedEnvelope) {
+        @SuppressWarnings("unchecked")
+        AddressedEnvelope<ByteBuf, SocketAddress> envelope = (AddressedEnvelope<ByteBuf, SocketAddress>) msg;
+        remoteAddress = envelope.recipient();
+        data = envelope.content();
+    } else {
+        data = (ByteBuf) msg;
+        remoteAddress = null;
+    }
+
+    final int dataLen = data.readableBytes();
+    if (dataLen == 0) {
+        return true;
+    }
+
+    final ByteBuffer nioData = data.internalNioBuffer(data.readerIndex(), dataLen);
+    final int writtenBytes;
+    if (remoteAddress != null) {
+        writtenBytes = javaChannel().send(nioData, remoteAddress);
+    } else {
+        writtenBytes = javaChannel().write(nioData);
+    }
+    return writtenBytes > 0;
+}
+```
+
+第5至9行，处理 `AddressedEnvelope` 类型的数据报，获取数据报的远程地址和数据。
+
+第10至12行，如果发送的是一个 `ByteBuf` 且没有指定远程地址，则需要先调用 `channel` 的 `connect` 方法。
+
+第20至26行，分别针对两种情况发送数据报。第23行指定了远程地址，第25行没有指定远程地址，但已经调用过 `connect` 方法。
+
+## Channel#disconnect
+
+**断开连接**
+
+`disconnect`方法的调用栈如下:
+
+```Java
+io.netty.channel.AbstractChannel#disconnect()
+io.netty.channel.DefaultChannelPipeline#disconnect()
+io.netty.channel.AbstractChannelHandlerContext#disconnect()
+io.netty.channel.AbstractChannelHandlerContext#disconnect(io.netty.channel.ChannelPromise)
+io.netty.channel.AbstractChannelHandlerContext#invokeDisconnect
+io.netty.channel.DefaultChannelPipeline.HeadContext#disconnect
+io.netty.channel.AbstractChannel.AbstractUnsafe#disconnect
+io.netty.channel.socket.nio.NioSocketChannel#doDisconnect
+io.netty.channel.socket.nio.NioSocketChannel#doClose
+```
+
+`disconnect` 稍微复杂一些。在 `io.netty.channel.AbstractChannelHandlerContext#disconnect(io.netty.channel.ChannelPromise)` 的实现中，会根据 `channel` 是否支持 `disconnect` 操作来决定下一步的动作：
+
+```java
+if (!channel().metadata().hasDisconnect()) {
+    next.invokeClose(promise);
+} else {
+    next.invokeDisconnect(promise);
+}
+```
+
+之所以这样设计，是因为 TCP 和 UDP 的 `disconnect` 含义不同。对于 TCP 来说，`disconnect` 就是关闭 `socket`；而对于 UDP 来说，`disconnect` 并不代表关闭连接，因为 UDP 没有连接的概念。默认情况下，通过 UDP `socket` 发送数据时需要指定远程地址，但如果调用 `connect` 方法后，就不需要每次指定远程地址，数据报会自动发送到 `connect` 指定的地址。
+
+因此，`disconnect` 在 UDP 中的含义是删除 `connect` 指定的地址，之后发送数据时必须重新指定地址。在 NIO 的 `Channel` 实现中，TCP 的 `disconnect` 是调用 `socket` 的 `close` 方法，而 UDP 的 `disconnect` 是调用 `socket` 的 `disconnect` 方法。以下是这两种不同的 `disconnect` 实现：
+
+::: code-group 
+
+```java [TCP]
+//io.netty.channel.socket.nio.NioSocketChannel#doDisconnect
+@Override
+protected void doDisconnect() throws Exception {
+    doClose();
+}
+@Override
+protected void doClose() throws Exception {
+    super.doClose();
+    javaChannel().close();
+}
+```
+
+```java [UDP]
+//io.netty.channel.socket.nio.NioDatagramChannel#doDisconnect
+@Override
+protected void doDisconnect() throws Exception {
+    javaChannel().disconnect();
+}
+```
+
+:::
+
+`io.netty.channel.AbstractChannel.AbstractUnsafe#disconnect` 实现了 `disconnect` 的逻辑。首先，它调用了 `doDisconnect` 方法，这个方法是 `io.netty.channel.AbstractChannel` 中定义的抽象方法。如果 `channel` 的状态从 `active` 变为 `inactive`，则会调用 `pipeline` 的 `fireChannelInactive` 方法触发 `channelInactive` 事件。
+
+## Channel#close
+
+`close`方法的调用栈:
+
+```java
+io.netty.channel.AbstractChannel#close()
+io.netty.channel.DefaultChannelPipeline#close()
+io.netty.channel.AbstractChannelHandlerContext#close()
+io.netty.channel.AbstractChannelHandlerContext#close(io.netty.channel.ChannelPromise)
+io.netty.channel.AbstractChannelHandlerContext#invokeClose
+io.netty.channel.DefaultChannelPipeline.HeadContext#close
+io.netty.channel.AbstractChannel.AbstractUnsafe#close(io.netty.channel.ChannelPromise)
+io.netty.channel.AbstractChannel.AbstractUnsafe#close(final ChannelPromise promise, final Throwable cause ,final ClosedChannelException closeCause, final boolean notify)
+io.netty.channel.AbstractChannel.AbstractUnsafe#doClose0
+io.netty.channel.socket.nio.NioSocketChannel#doClose
+```
+
+`close` 的逻辑实现在 `io.netty.channel.AbstractChannel.AbstractUnsafe#close(final ChannelPromise promise, final Throwable cause, final ClosedChannelException closeCause, final boolean notify)` 方法中。这个 `close` 方法主要实现了以下几个功能：
+
+- 确保在多线程环境下，多次调用 `close` 和一次调用的效果一致，并且可以通过 `promise` 得到相同的结果。
+- 在执行 `close` 的过程中，保证不能向 `channel` 写数据。
+- 调用 `doClose0` 执行真正的 `close` 操作。
+- 调用 `deregister` 对 `channel` 进行最后的清理工作，并触发 `channelInactive` 和 `channelUnregistered` 事件。
+
+以下是这个方法的实现代码：
+
+```java
+private void close(final ChannelPromise promise, final Throwable cause,
+                   final ClosedChannelException closeCause, final boolean notify) {
+    if (!promise.setUncancellable()) {
+        return;
+    }
+
+    if (closeInitiated) {
+        if (closeFuture.isDone()) {
+            // Closed already.
+            safeSetSuccess(promise);
+        } else if (!(promise instanceof VoidChannelPromise)) { // Only needed if no VoidChannelPromise.
+            // This means close() was called before so we just register a listener and return
+            closeFuture.addListener(new ChannelFutureListener() {
+                @Override
+                public void operationComplete(ChannelFuture future) throws Exception {
+                    promise.setSuccess();
+                }
+            });
+        }
+        return;
+    }
+
+    closeInitiated = true;
+
+    final boolean wasActive = isActive();
+    final ChannelOutboundBuffer outboundBuffer = this.outboundBuffer;
+    this.outboundBuffer = null; // Disallow adding any messages and flushes to outboundBuffer.
+    Executor closeExecutor = prepareToClose();
+    if (closeExecutor != null) {
+        closeExecutor.execute(new Runnable() {
+            @Override
+            public void run() {
+                try {
+                    // Execute the close.
+                    doClose0(promise);
+                } finally {
+                    // Call invokeLater so closeAndDeregister is executed in the EventLoop again!
+                    invokeLater(new Runnable() {
+                        @Override
+                        public void run() {
+                            if (outboundBuffer != null) {
+                                // Fail all the queued messages
+                                outboundBuffer.failFlushed(cause, notify);
+                                outboundBuffer.close(closeCause);
+                            }
+                            fireChannelInactiveAndDeregister(wasActive);
+                        }
+                    });
+                }
+            }
+        });
+    } else {
+        try {
+            // Close the channel and fail the queued messages in all cases.
+            doClose0(promise);
+        } finally {
+            if (outboundBuffer != null) {
+                // Fail all the queued messages.
+                outboundBuffer.failFlushed(cause, notify);
+                outboundBuffer.close(closeCause);
+            }
+        }
+        if (inFlush0) {
+            invokeLater(new Runnable() {
+                @Override
+                public void run() {
+                    fireChannelInactiveAndDeregister(wasActive);
+                }
+            });
+        } else {
+            fireChannelInactiveAndDeregister(wasActive);
+        }
+    }
+}
+```
+
+在 `close` 方法中，7-23 行的代码确保了 `close` 操作只会执行一次。这个操作由 `closeInitiated` 属性控制，尽管它是一个普通的 `boolean` 类型，且在多线程环境下可能会出现可见性问题，但实际上，`close` 方法只会在 `channel` 的 `eventLoop` 线程中执行。因此，尽管可能有多个线程调用 `channel.close()`，只有一个线程会执行关闭操作。
+
+26-27 行，`outboundBuffer` 被设置为 `null`，这样所有通过 `write` 方法写入的数据都会通过 `promise` 返回错误，确保不会有数据在关闭过程中写入。
+
+28 行，`prepareToClose` 是一个 `protected` 方法，默认返回 `null`。它可以被覆盖，用来在关闭前做一些准备工作，比如指定一个 `executor`，以便在指定的执行器中执行关闭操作。
+
+33-49 行和 53-72 行的代码实现了相同的功能，只是前者在 `prepareToClose` 提供的 `executor` 中执行。主要步骤包括：
+
+- 调用 `doClose0` 执行实际的关闭操作。
+- 清理 `outboundBuffer`（43, 44 行）。
+- 触发 `channelInactive` 和 `channelDeregister` 事件（46 行）。
+- 使用 `inFlush0` 属性检查当前是否正在进行 `flush` 操作，如果是，确保 `flush` 完成后再触发事件。
+
+在 `doClose0` 方法中，首先调用 `doClose` 执行实际的关闭操作，然后设置 `promise` 的返回值，完成关闭的最终步骤。
+
+```java
+//io.netty.channel.AbstractChannel.AbstractUnsafe#doClose0
+private void doClose0(ChannelPromise promise) {
+    try {
+        doClose();
+        closeFuture.setClosed();
+        safeSetSuccess(promise);
+    } catch (Throwable t) {
+        closeFuture.setClosed();
+        safeSetFailure(promise, t);
+    }
+}
+//io.netty.channel.socket.nio.NioSocketChannel#doClose
+@Override
+protected void doClose() throws Exception {
+    super.doClose();
+    javaChannel().close();
+}
+```
+
+`fireChannelInactiveAndDeregister` 是调用 `deregister` 实现的，也就是说，正常情况下，调用 `Channel` 的 `close` 方法之后，会自动完成一个 channel 最后的清理工作，无需再调用 `deregister` 方法。
+
+```java
+private void fireChannelInactiveAndDeregister(final boolean wasActive) {
+    deregister(voidPromise(), wasActive && !isActive());
+}
+```
+
+## Channel#deregister
+
+`deregister`的调用栈
+
+```java
+io.netty.channel.AbstractChannel#deregister()
+io.netty.channel.DefaultChannelPipeline#deregister()
+io.netty.channel.AbstractChannelHandlerContext#deregister()
+io.netty.channel.AbstractChannelHandlerContext#deregister(io.netty.channel.ChannelPromise)
+io.netty.channel.AbstractChannelHandlerContext#invokeDeregister
+io.netty.channel.DefaultChannelPipeline.HeadContext#deregister
+io.netty.channel.AbstractChannel.AbstractUnsafe#deregister(io.netty.channel.ChannelPromise)
+io.netty.channel.AbstractChannel.AbstractUnsafe#deregister(io.netty.channel.ChannelPromise, boolean)
+io.netty.channel.nio.AbstractNioChannel#doDeregister
+```
+
+`deregister` 的逻辑在 `io.netty.channel.AbstractChannel.AbstractUnsafe#deregister(final ChannelPromise promise, final boolean fireChannelInactive)` 方法中实现。这个方法的实现比较简单，主要是调用 `doDeregister` 方法执行 `deregister` 操作，然后根据 `fireChannelInactive` 参数的值，触发 `channelInactive` 事件（如果 `fireChannelInactive` 为 `true`）以及 `channelUnregistered` 事件。
+
+```java
+private void deregister(final ChannelPromise promise, final boolean fireChannelInactive) {
+    if (!promise.setUncancellable()) {
+        return;
+    }
+    if (!registered) {
+        safeSetSuccess(promise);
+        return;
+    }
+    invokeLater(new Runnable() {
+        @Override
+        public void run() {
+            try {
+                doDeregister();
+            } catch (Throwable t) {
+                logger.warn("Unexpected exception occurred while deregistering a channel.", t);
+            } finally {
+                if (fireChannelInactive) {
+                    pipeline.fireChannelInactive();
+                }
+                if (registered) {
+                    registered = false;
+                    pipeline.fireChannelUnregistered();
+                }
+                safeSetSuccess(promise);
+            }
+        }
+    });
+}
+```
+
+这里使用 `invokeLater` 执行主要逻辑的目的是为了确保当前在 `eventLoop` 队列中的所有任务都执行完之后，再执行真正的 `deregister` 操作。
+
+`doDeregister` 的默认实现是空的，不执行任何操作，它是一个 `protected` 方法。真正的实现位于 `io.netty.channel.nio.AbstractNioChannel` 中，具体做法是调用 `eventLoop` 的 `cancel` 方法，删除 `SocketChannel` 对应的 `SelectionKey` 从 `Selector` 中。这样，`Selector` 就不会再监听到该 `socket` 上的任何事件。
+
+```java
+@Override
+protected void doDeregister() throws Exception {
+    eventLoop().cancel(selectionKey());
+}
+```
+
+
 
 ## 总结
 

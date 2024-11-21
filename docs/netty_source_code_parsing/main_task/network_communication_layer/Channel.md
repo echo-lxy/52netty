@@ -222,17 +222,330 @@ protected void doRegister() throws Exception {
 
 <img src="https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202411211511962.png" alt="image-20241121151155853" style="zoom: 50%;" />
 
-### AbstractNioMessageChannel 
+## Channel#Read
 
-### AbstractNioByteChannel 
+### Nio Channel 通知 eventLoop 开始读数据
 
-### NioServerSocketChannel
+`channel#read`方法的调用栈：
 
-### NioSocketChannel
+```shell
+io.netty.channel.AbstractChannel#read
+io.netty.channel.DefaultChannelPipeline#read
+io.netty.channel.AbstractChannelHandlerContext#read
+io.netty.channel.AbstractChannelHandlerContext#invokeRead
+io.netty.channel.DefaultChannelPipeline.HeadContext#read
+io.netty.channel.AbstractChannel.AbstractUnsafe#beginRead
+io.netty.channel.nio.AbstractNioChannel#doBeginRead
+```
 
-### NioMessageUnsafe
+调用 `channel` 的 `read` 方法会触发 `read` 事件，并通过 `pipeline` 调用 `AbstractChannel` 的 `unsafe` 的 `beginRead` 方法。这个方法的语义是通知 `eventLoop` 可以从 `channel` 读取数据了，但它并不实现具体功能，而是将具体功能留给 `doBeginRead` 来实现。
 
-### NioByteUnsafe
+`doBeginRead` 方法在 `AbstractChannel` 中被定义为抽象方法。`AbstractNioChannel` 实现了这个方法，具体实现如下：
+
+```java
+@Override
+protected void doBeginRead() throws Exception {
+    // Channel.read() or ChannelHandlerContext.read() was called
+    final SelectionKey selectionKey = this.selectionKey;
+    if (!selectionKey.isValid()) {
+        return;
+    }
+
+    readPending = true;
+
+    final int interestOps = selectionKey.interestOps();
+    if ((interestOps & readInterestOp) == 0) {
+        selectionKey.interestOps(interestOps | readInterestOp);
+    }
+}
+```
+
+在 `doBeginRead` 的实现中，只有第17行是核心代码：它将 `readInterestOps`（即读取操作的标志）保存并添加到 `SelectableChannel` 的 `SelectionKey` 中。`readInterestOps` 是一个类的属性，在 `AbstractNioChannel` 中没有明确的定义，只有一个抽象的定义，它代表 NIO 中可以当作读取操作的标志。在 NIO 中，可以当作读取操作的标志有 `SelectionKey.OP_READ` 和 `SelectionKey.OP_ACCEPT`。
+
+`readInterestOps` 在 `AbstractNioChannel` 的构造方法中通过传入的参数进行初始化，子类可以根据需要确定 `interestOps` 的具体含义。
+
+在设置好 `beginRead` 后，`NioEventLoop` 就可以使用 `Selector` 来检测到 `channel` 上的读取事件了。接下来是 `NioEventLoop` 中处理读取事件的代码：
+
+```java
+//io.netty.channel.nio.NioEventLoop#processSelectedKey(java.nio.channels.SelectionKey,io.netty.channel.nio.AbstractNioChannel)
+if ((readyOps & (SelectionKey.OP_READ | SelectionKey.OP_ACCEPT)) != 0 || readyOps == 0) {
+    unsafe.read();
+}
+```
+
+这里调用了 `unsafe` 的 `read` 方法，但在 `Channel` 的 `Unsafe` 中并没有定义这个方法。它实际上在 `io.netty.channel.nio.AbstractNioChannel.NioUnsafe` 中定义，并在 `io.netty.channel.nio.AbstractNioMessageChannel.NioMessageUnsafe` 和 `io.netty.channel.nio.AbstractNioByteChannel.NioByteUnsafe` 中有两个不同的实现。
+
+这两个实现的区别在于：
+
+- `NioMessageUnsafe.read` 方法将从 `channel` 中读出的数据转换成 `Object`。
+- `NioByteUnsafe.read` 方法则是从 `channel` 中读出字节数据流。
+
+接下来，我们将详细分析这两种实现的具体细节。
+
+### 多态的 Read
+
+Netty 在 NIO Channel 的设计上，将读取数据独立成一个抽象层。这样的设计有两个主要原因：
+
+* **不同类型的 `Channel` 读取的数据类型不同**：
+
+  - `NioServerSocketChannel` 读取的是一个新建的 `NioSocketChannel`。
+
+  - `NioSocketChannel` 读取的是字节数据流。
+
+  - `NioDatagramChannel` 读取的是数据报。
+
+* **非阻塞模式下读取数据的复杂性**：
+
+  - 在 NIO 中，三种不同的 `Channel` 都运行在非阻塞模式下。与阻塞模式相比，非阻塞模式下读取数据需要处理更多的复杂问题。使用 `Selector` 和非阻塞模式被动地读取数据时，必须处理连接断开和 socket 异常等情况。由于 `Selector` 是边缘触发模式，一次 `read` 调用必须将已经在 socket 的接收缓冲区中的数据全部读取出来，否则可能会导致数据丢失或接收不及时。
+
+  - 将 `read` 操作独立出来，可以专门处理读取数据的复杂性，使得代码结构更加清晰。
+
+接下来，我们将详细分析 `NioUnsafe` 中 `read` 方法的两种不同实现方式。
+
+#### NioMessageUnsafe
+
+这个实现的主要功能是调用 `doReadMessages` 方法，从 `channel` 中读取 `Object` 类型的消息，具体的类型并没有限制。`doReadMessages` 是一个抽象方法，留给子类实现。
+
+下面是 `read` 方法的实现：
+
+```java
+@Override
+public void read() {
+    assert eventLoop().inEventLoop();
+    final ChannelConfig config = config();
+    final ChannelPipeline pipeline = pipeline();
+    final RecvByteBufAllocator.Handle allocHandle = unsafe().recvBufAllocHandle();
+    allocHandle.reset(config);
+
+    boolean closed = false;
+    Throwable exception = null;
+    try {
+        try {
+            do {
+                int localRead = doReadMessages(readBuf);
+                if (localRead == 0) {
+                    break;
+                }
+                if (localRead < 0) {
+                    closed = true;
+                    break;
+                }
+
+                allocHandle.incMessagesRead(localRead);
+            } while (allocHandle.continueReading());
+        } catch (Throwable t) {
+            exception = t;
+        }
+
+        int size = readBuf.size();
+        for (int i = 0; i < size; i ++) {
+            readPending = false;
+            pipeline.fireChannelRead(readBuf.get(i));
+        }
+        readBuf.clear();
+        allocHandle.readComplete();
+        pipeline.fireChannelReadComplete();
+
+        if (exception != null) {
+            closed = closeOnReadError(exception);
+
+            pipeline.fireExceptionCaught(exception);
+        }
+
+        if (closed) {
+            inputShutdown = true;
+            if (isOpen()) {
+                close(voidPromise());
+            }
+        }
+    } finally {
+        // Check if there is a readPending which was not processed yet.
+        // This could be for two reasons:
+        // * The user called Channel.read() or ChannelHandlerContext.read() in channelRead(...) method
+        // * The user called Channel.read() or ChannelHandlerContext.read() in channelReadComplete(...) method
+        //
+        // See https://github.com/netty/netty/issues/2254
+        if (!readPending && !config.isAutoRead()) {
+            removeReadOp();
+        }
+    }
+}
+```
+
+在第12行，获取每次循环读取的最大消息数量 `maxMessagesPerRead`。该配置的默认值因不同的 `channel` 类型而异，`io.netty.channel.ChannelConfig` 提供了 `setMaxMessagesPerRead` 方法来设置该配置的值。调节该值的大小会影响 I/O 操作在 `eventLoop` 线程中的执行时间。值越大，I/O 操作占用的时间就越长。
+
+在第18至36行，使用 `doReadMessages` 方法读取消息，并将消息放入 `readBuf` 中，`readBuf` 是 `List<Object>` 类型。具体说明如下：
+
+- 第20和21行：如果没有可读的数据，结束循环。
+- 第23至25行：如果 `socket` 已经关闭，则结束循环。
+- 第33和34行：如果 `readBuf` 中的消息数量超过限制，则跳出循环。
+
+在第41至47行，对 `readBuf` 中的每一条消息触发一次 `channelRead` 事件，然后清空 `readBuf`，并触发 `channelReadComplete` 事件。
+
+在第49至53行，处理异常。
+
+在第55至59行，处理 `channel` 正常关闭。
+
+`doReadMessages` 方法有两个实现：
+
+- 一个是 `io.netty.channel.socket.nio.NioServerSocketChannel#doReadMessages`，该实现中读取的消息是 `NioSocketChannel`。
+- 另一个是 `io.netty.channel.socket.nio.NioDatagramChannel#doReadMessages`，该实现中读取的消息是 `DatagramPacket`。
+
+##### NioServerSocketChannel
+
+```java
+@Override
+protected int doReadMessages(List<Object> buf) throws Exception {
+    SocketChannel ch = SocketUtils.accept(javaChannel());
+
+    try {
+        if (ch != null) {
+            buf.add(new NioSocketChannel(this, ch));
+            return 1;
+        }
+    } catch (Throwable t) {
+        logger.warn("Failed to create a new channel from an accepted socket.", t);
+
+        try {
+            ch.close();
+        } catch (Throwable t2) {
+            logger.warn("Failed to close a socket.", t2);
+        }
+    }
+
+    return 0;
+}
+```
+
+##### NioDatagramChannel
+
+```java
+@Override
+protected int doReadMessages(List<Object> buf) throws Exception {
+    DatagramChannel ch = javaChannel();
+    DatagramChannelConfig config = config();
+    RecvByteBufAllocator.Handle allocHandle = unsafe().recvBufAllocHandle();
+
+    ByteBuf data = allocHandle.allocate(config.getAllocator());
+    allocHandle.attemptedBytesRead(data.writableBytes());
+    boolean free = true;
+    try {
+        ByteBuffer nioData = data.internalNioBuffer(data.writerIndex(), data.writableBytes());
+        int pos = nioData.position();
+        InetSocketAddress remoteAddress = (InetSocketAddress) ch.receive(nioData);
+        if (remoteAddress == null) {
+            return 0;
+        }
+
+        allocHandle.lastBytesRead(nioData.position() - pos);
+        buf.add(new DatagramPacket(data.writerIndex(data.writerIndex() + allocHandle.lastBytesRead()),
+                                   localAddress(), remoteAddress));
+        free = false;
+        return 1;
+    } catch (Throwable cause) {
+        PlatformDependent.throwException(cause);
+        return -1;
+    }  finally {
+        if (free) {
+            data.release();
+        }
+    }
+}
+```
+
+#### NioByteUnsafe
+
+这个实现的主要功能是调用 `doReadBytes` 方法读取字节流。`doReadBytes` 是一个抽象方法，留给子类实现。
+
+下面是 `read` 方法的实现：
+
+```java
+@Override
+public final void read() {
+    final ChannelConfig config = config();
+    if (shouldBreakReadReady(config)) {
+        clearReadPending();
+        return;
+    }
+    final ChannelPipeline pipeline = pipeline();
+    final ByteBufAllocator allocator = config.getAllocator();
+    final RecvByteBufAllocator.Handle allocHandle = recvBufAllocHandle();
+    allocHandle.reset(config);
+
+    ByteBuf byteBuf = null;
+    boolean close = false;
+    try {
+        do {
+            byteBuf = allocHandle.allocate(allocator);
+            allocHandle.lastBytesRead(doReadBytes(byteBuf));
+            if (allocHandle.lastBytesRead() <= 0) {
+                // nothing was read. release the buffer.
+                byteBuf.release();
+                byteBuf = null;
+                close = allocHandle.lastBytesRead() < 0;
+                if (close) {
+                    // There is nothing left to read as we received an EOF.
+                    readPending = false;
+                }
+                break;
+            }
+
+            allocHandle.incMessagesRead(1);
+            readPending = false;
+            pipeline.fireChannelRead(byteBuf);
+            byteBuf = null;
+        } while (allocHandle.continueReading());
+
+        allocHandle.readComplete();
+        pipeline.fireChannelReadComplete();
+
+        if (close) {
+            closeOnRead(pipeline);
+        }
+    } catch (Throwable t) {
+        handleReadException(pipeline, byteBuf, t, close, allocHandle);
+    } finally {
+        // Check if there is a readPending which was not processed yet.
+        // This could be for two reasons:
+        // * The user called Channel.read() or ChannelHandlerContext.read() in channelRead(...) method
+        // * The user called Channel.read() or ChannelHandlerContext.read() in channelReadComplete(...) method
+        //
+        // See https://github.com/netty/netty/issues/2254
+        if (!readPending && !config.isAutoRead()) {
+            removeReadOp();
+        }
+    }
+}
+```
+
+在第10至16行，获取一个接收缓冲区的分配器及其专用 `handle`。这两个组件的功能是高效地创建大量接收数据的缓冲区。具体的原理和实现将在后续的缓冲区相关章节中详细分析，暂时略过。
+
+在第24至64行，这是一个使用 `doReadBytes` 读取数据并触发 `channelRead` 事件的循环。具体操作如下：
+
+- 第25至27行：获取一个接收数据的缓冲区，并从 `socket` 中读取数据。
+- 第28至38行：如果没有数据可读，或者 `socket` 已经断开，跳出循环。
+- 第43行：如果正确收到了数据，触发 `channelRead` 事件。
+- 第59至62行：如果读出的数据小于缓冲区的长度，表示 `socket` 中暂时没有数据可读。
+- 第64行：如果读取次数超过了上限配置，跳出循环。
+
+在第66行，读循环完成后，触发 `channelReadComplete` 事件。
+
+在第69至72行，处理 `socket` 的正常关闭。
+
+在第74至83行，处理其他异常。
+
+`doReadBytes` 方法只有一个实现：
+
+```java
+// io.netty.channel.socket.nio.NioSocketChannel#doWriteBytes
+@Override
+protected int doWriteBytes(ByteBuf buf) throws Exception {
+    final int expectedWrittenBytes = buf.readableBytes();
+    return buf.readBytes(javaChannel(), expectedWrittenBytes);
+}
+```
+
+这个实现非常简单，利用 `ByteBuf` 的能力从 `SocketChannel` 中读取字节流
 
 ## AttributeMap 接口
 
@@ -256,9 +569,9 @@ public interface AttributeMap {
 }
 ```
 
-
-
 ## DefaultAttributeMap 抽象类
+
+【TODO】
 
 ## 总结
 

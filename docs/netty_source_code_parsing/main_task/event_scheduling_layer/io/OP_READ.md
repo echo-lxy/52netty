@@ -2,21 +2,21 @@
 
 ## 前言
 
-在前两篇文章[《处理 OP_CONNECT 事件》](/netty_source_code_parsing/main_task/event_scheduling_layer/io/OP_CONNECT)和[《处理 OP_ACCEPT 事件》](/netty_source_code_parsing/main_task/event_scheduling_layer/io/OP_ACCEPT)中，我们说明了客户端和服务端如何成功建立一个 TCP 连接。当双方的三次握手结束后，就应该进行消息的收发。
+在前两篇文章[《处理 OP_CONNECT 事件》](/netty_source_code_parsing/main_task/event_scheduling_layer/io/OP_CONNECT)和[《处理 OP_ACCEPT 事件》](/netty_source_code_parsing/main_task/event_scheduling_layer/io/OP_ACCEPT)中，我们讲解了客户端和服务端如何成功建立一个 TCP 连接。通信双方成功建立 TCP 连接（三次握手完成）后，便开始进行数据的收发。
 
-因此，本文和[《处理 OP_WRITE 事件》](/netty_source_code_parsing/main_task/event_scheduling_layer/io/OP_WRITE) 分别主要讲解网络数据的接收和发送，这两种 IO 操作主要与 `NioSocketChannel` 相关。
+因此，本文以及[《处理 OP_WRITE 事件》](/netty_source_code_parsing/main_task/event_scheduling_layer/io/OP_WRITE) 将分别讲解网络数据的接收和发送。这两种 IO 操作主要与 `NioSocketChannel` 相关。
 
-`NioServerSocketChannel` 在成功接受客户端连接后，会将该连接生成的新 `NioSocketChannel` 注册到 `Sub Reactor`，并注册 `OP_READ` 操作。`OP_WRITE` 操作并不会直接被注册，它的注册时机是：
+当 `NioServerSocketChannel` 成功接受客户端连接后，它会将该连接生成的新 `NioSocketChannel` 注册到 `Sub Reactor`，并注册 `OP_READ` 操作。`OP_WRITE` 操作并不会直接被注册，只有在以下情况下才会注册：
 
-在 Netty 向 `Channel` 写入数据时，也就是将用户态缓冲区的数据写入 IO 时。如果出现 TCP 缓冲区满的情况，就无法继续写入，这时就会注册 `OP_WRITE` 事件。
+- 当 Netty 向 `Channel` 写入数据时，也就是将用户态缓冲区的数据写入 IO。如果 TCP 缓冲区已满，无法继续写入数据时，`OP_WRITE` 事件才会被注册。
 
-当 `OP_WRITE` 事件产生时，Netty 会将其捕获，然后继续执行 `flush`（刷新数据）。
+当 `OP_WRITE` 事件触发时，Netty 会捕获该事件，并继续执行 `flush`（刷新数据）。
 
-**注意，从本文开始，将会设计大量 ByteBuf 相关的内容，建议先阅读本书第四部分【数据载体与内存管理】。**
+**注意： 从本文开始，将涉及大量 `ByteBuf` 相关内容，建议先阅读本书第四部分【内存管理机制】。**
 
-我们直接进入今天的主题，看看 Netty 是如何处理 `OP_READ` 事件以及如何高效接收网络数据的。
+接下来，我们将直接进入今天的主题，探讨 Netty 是如何处理 `OP_READ` 事件，并高效接收网络数据的。
 
-## 1、Sub Reactor 处理 OP_READ 事件流程总览
+## Sub Reactor 处理 OP_READ 事件流程总览
 
 <img src="https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410311659254.png?x-oss-process=image/watermark,image_aW1nL3dhdGVyLnBuZw==,g_nw,x_1,y_1" alt="image-20241031165953082" style="zoom:33%;" />
 
@@ -69,7 +69,7 @@ public final class NioEventLoop extends SingleThreadEventLoop {
 
 下面我们到`NioByteUnsafe#read`方法中来看下 Netty 对`OP_READ事件`的具体处理过程：
 
-## 2、Netty 接收网络数据流程总览
+## 接收网络数据流程总览
 
 我们直接按照老规矩，先从整体上把整个 OP_READ 事件的逻辑处理框架提取出来，让大家先总体俯视下流程全貌，然后在针对每个核心点位进行各个击破。
 
@@ -77,9 +77,9 @@ public final class NioEventLoop extends SingleThreadEventLoop {
 
 流程中相关置灰的步骤为 Netty 处理连接关闭时的逻辑，和本文主旨无关，我们这里暂时忽略，等后续笔者介绍连接关闭时，会单独开一篇文章详细为大家介绍。
 
-从上面这张 Netty 接收网络数据总体流程图可以看出 NioSocketChannel 在接收网络数据的整个流程和我们在上篇文章[Netty 如何接收网络连接](https://www.yuque.com/onejava/gwzrgm/tgcgqew4b8nlpxes)中介绍的 NioServerSocketChannel 在接收客户端连接时的流程在总体框架上是一样的。
+从上面这张 Netty 接收网络数据总体流程图可以看出 `NioSocketChannel` 在接收网络数据的整个流程和我们在上篇文章[《处理 OP_ACCEPT 事件》](/netty_source_code_parsing/main_task/event_scheduling_layer/io/OP_ACCEPT)中介绍的 `NioServerSocketChannel` 在接收客户端连接时的流程在总体框架上是一样的。
 
-在接收网络数据的过程中，**NioSocketChannel** 也是通过一个 `do {...} while(...)` 循环的 **read loop** 不断循环读取连接 `NioSocketChannel` 上的数据。
+在接收网络数据的过程中，**`NioSocketChannel`** 也是通过一个 `do {...} while(...)` 循环的 **read loop** 不断循环读取连接 `NioSocketChannel` 上的数据。
 
 同样，在 `NioSocketChannel` 读取连接数据的 **read loop** 中，也受到最大读取次数的限制。默认配置最多只能读取 16 次，超过 16 次时，无论此时 `NioSocketChannel` 中是否还有数据可读，都无法继续进行读取。
 
@@ -160,15 +160,15 @@ public class EchoServerHandler extends ChannelInboundHandlerAdapter {
 
 最后，在 `read loop` 循环的末尾会调用 `allocHandle.continueReading()` 来判断是否结束本次 **read loop** 循环。这里的结束循环条件的判断比在介绍 `NioServerSocketChannel` 接收连接时的判断条件复杂得多。笔者会在文章后面的细节部分对此判断条件进行详细解析，这里大家只需要把握总体核心流程，不必关注太多细节。
 
-总体上，在 `NioSocketChannel` 中读取网络数据的 **read loop** 循环结束条件需要满足以下几点：
+**总体上，在 `NioSocketChannel` 中读取网络数据的 read loop 循环结束条件是下述之一：**
 
 - 当前 `NioSocketChannel` 中的数据已经全部读取完毕，则退出循环。
 - 本轮 **read loop** 如果没有读到任何数据，则退出循环。
 - **read loop** 的读取次数达到 16 次，退出循环。
 
-当满足这些 **read loop** 退出条件之后，**Sub Reactor** 线程就会退出循环，随后调用 `allocHandle.readComplete()` 方法，根据本轮 **read loop** 总共读取到的字节数 `totalBytesRead` 来决定是否对用于接收下一轮 **OP_READ** 事件数据的 **ByteBuffer** 进行扩容或缩容。
+当满足这些 **read loop** 退出条件之后，Sub Reactor 线程就会退出循环，随后调用 `allocHandle.readComplete()` 方法，根据本轮 **read loop** 总共读取到的字节数 `totalBytesRead` 来决定是否对用于接收下一轮 OP_READ 事件数据的 `ByteBuffer` 进行扩容或缩容。
 
-最后，在 `NioSocketChannel` 的 **pipeline** 中触发 **ChannelReadComplete** 事件，通知 **ChannelHandler** 本次 **OP_READ** 事件已经处理完毕。
+最后，在 `NioSocketChannel` 的 pipeline 中触发 `ChannelReadComplete` 事件，通知 `ChannelHandler` 本次 OP_READ 事件已经处理完毕。
 
 <img src="https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410311705433.png?x-oss-process=image/watermark,image_aW1nL3dhdGVyLnBuZw==,g_nw,x_1,y_1" alt="image-20241031170530348" style="zoom:50%;" />
 
@@ -213,7 +213,7 @@ Netty 服务端对一次 `OP_READ` 事件的处理，会在一个 `do { ... } wh
 
 下面笔者会结合这张流程图，给大家把这部分的核心主干源码框架展现出来，大家可以将我们介绍过的核心逻辑与主干源码做个一一对应，还是那句老话，我们要从主干框架层面把握整体处理流程，不需要读懂每一行代码，文章后续笔者会将这个过程中涉及到的核心点位给大家拆开来各个击破！！
 
-## 3、源码核心框架总览
+## 源码核心框架总览
 
 ```java
 @Override
@@ -297,14 +297,14 @@ final RecvByteBufAllocator.Handle allocHandle = recvBufAllocHandle();
 
 **在这两个 `ByteBuffer` 各自的区别和联系如下：**
 
-- **ByteBufAllocator**：这是 Netty 的一个接口，用于分配 `ByteBuf` 的实例。它负责在应用层为数据的处理分配合适的内存。通过 `ByteBufAllocator`，可以获得不同类型的 `ByteBuf`，例如堆内存或直接内存，适用于不同的场景。
-- **RecvByteBufAllocator**：这个接口专门用于接收数据时的内存分配。它的职责是根据网络接收的流量动态调整内存的分配策略，从而提高性能。在上篇文章提到的 `NioServerSocketChannelConfig` 中，这里的 `RecvByteBufAllocator` 类型为 `ServerChannelRecvByteBufAllocator`，它特别为服务端通道的接收设计。
+- **`ByteBufAllocator`**：这是 Netty 的一个接口，用于分配 `ByteBuf` 的实例。它负责在应用层为数据的处理分配合适的内存。通过 `ByteBufAllocator`，可以获得不同类型的 `ByteBuf`，例如堆内存或直接内存，适用于不同的场景。
+- **`RecvByteBufAllocator`**：这个接口专门用于接收数据时的内存分配。它的职责是根据网络接收的流量动态调整内存的分配策略，从而提高性能。在上篇文章提到的 `NioServerSocketChannelConfig` 中，这里的 `RecvByteBufAllocator` 类型为 `ServerChannelRecvByteBufAllocator`，它特别为服务端通道的接收设计。
 
 总结来说，`ByteBufAllocator` 主要用于内存的分配，而 `RecvByteBufAllocator` 则用于接收数据时的动态内存分配策略。两者共同协作，以提高 Netty 在处理 IO 数据时的性能和灵活性。
 
-而在本文中 NioSocketChannelConfig 中的 RecvByteBufAllocator 类型为 AdaptiveRecvByteBufAllocator。
+而在本文中 `NioSocketChannelConfig` 中的 `RecvByteBufAllocator` 类型为 `AdaptiveRecvByteBufAllocator`。
 
-![img](https://cdn.nlark.com/yuque/0/2024/png/35210587/1729900833842-c59f3a45-cee4-492b-8148-842224a9e416.png)
+<img src="https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202411211254778.png" alt="image-20241121125413727" style="zoom: 50%;" />
 
 所以这里 `recvBufAllocHandle()` 获得的 `RecvByteBufAllocator` 为 `AdaptiveRecvByteBufAllocator`。顾名思义，这种类型的 `RecvByteBufAllocator` 可以根据 `NioSocketChannel` 上每次到来的 IO 数据大小，自适应动态调整 `ByteBuffer` 的容量。
 
@@ -320,7 +320,7 @@ final RecvByteBufAllocator.Handle allocHandle = recvBufAllocHandle();
 
 `PooledByteBufAllocator` 是 Netty 中的内存池，用来管理堆外内存 `DirectByteBuffer`。
 
-最后，`AdaptiveRecvByteBufAllocator` 中的 `allocHandle` 在上篇文章中我们也介绍过，它的实际类型为 `MaxMessageHandle`。
+最后，`AdaptiveRecvByteBufAllocator` 中的 `allocHandle` 在【TODO】上篇文章中我们也介绍过，它的实际类型为 `MaxMessageHandle`。
 
 ```java
 public class AdaptiveRecvByteBufAllocator extends DefaultMaxMessagesRecvByteBufAllocator {
@@ -471,7 +471,7 @@ public class NioSocketChannel extends AbstractNioByteChannel implements io.netty
 
 这里会直接调用底层 JDK NIO 的 `SocketChannel#read` 方法，将数据读取到 `DirectByteBuffer` 中。读取数据的大小为本次分配的 `DirectByteBuffer` 容量，初始为 `2048`。
 
-## 4、ByteBuffer 动态自适应扩缩容机制
+## ByteBuffer 动态自适应扩缩容机制
 
 由于我们一开始并不知道客户端会发送多大的网络数据，因此这里先利用 `PooledByteBufAllocator` 分配一个初始容量为 `2048` 的 `DirectByteBuffer` 用于接收数据。
 
@@ -560,11 +560,11 @@ public class AdaptiveRecvByteBufAllocator extends DefaultMaxMessagesRecvByteBufA
 
 - 当索引容量小于 `512` 时，`SIZE_TABLE` 中定义的容量索引是从 `16` 开始按 `16` 递增。
 
-![image-20241101131434177](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202411011314269.png)
+<img src="https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202411011314269.png" alt="image-20241101131434177" style="zoom:33%;" />
 
 - 当索引容量大于`512`时，`SIZE_TABLE`中定义的容量索引是按前一个索引容量的 2 倍递增。
 
-![image-20241101131501035](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202411011315099.png)
+<img src="https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202411011315099.png" alt="image-20241101131501035" style="zoom:33%;" />
 
 ### 扩缩容逻辑
 
@@ -641,7 +641,7 @@ public abstract class MaxMessageHandle implements ExtendedHandle {
 
 扩容步长`INDEX_INCREMENT = 4`，缩容步长`INDEX_DECREMENT = 1`。
 
-![img](https://cdn.nlark.com/yuque/0/2024/png/35210587/1729901578116-d3aae8c5-4c21-4472-80ac-2774c9016dac.png)
+<img src="https://cdn.nlark.com/yuque/0/2024/png/35210587/1729901578116-d3aae8c5-4c21-4472-80ac-2774c9016dac.png" alt="img" style="zoom:33%;" />
 
 **缩容**
 

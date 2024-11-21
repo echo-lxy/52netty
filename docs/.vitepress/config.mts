@@ -168,7 +168,20 @@ export default defineConfig({
             items: [
               {
                 text: "网络通信层",
-                items: [],
+                items: [
+                  {
+                    text: "Netty Channel 源码解析",
+                    link: "/main_task/network_communication_layer/Channel.md",
+                  },
+                  {
+                    text: "Netty Selector 源码解析",
+                    link: "/main_task/network_communication_layer/Selector.md",
+                  },
+                  {
+                    text: "Netty EventLoop 源码解析",
+                    link: "/main_task/network_communication_layer/EventLoop.md",
+                  },
+                ],
               },
               {
                 text: "启动引导层",
@@ -277,20 +290,20 @@ export default defineConfig({
             text: "第五部分：其他源码分析",
             collapsed: true,
             items: [
+              // {
+              //   text: "Java NIO Channel",
+              //   link: "/other_source_code/java_nio_channel.md",
+              // },
+              // {
+              //   text: "Java NIO Buffer",
+              //   link: "/other_source_code/java_nio_buffer.md",
+              // },
+              // {
+              //   text: "Java NIO Selector",
+              //   link: "/other_source_code/java_nio_selector.md",
+              // },
               {
-                text: "Java NIO Channel",
-                link: "/other_source_code/java_nio_channel.md",
-              },
-              {
-                text: "Java NIO Buffer",
-                link: "/other_source_code/java_nio_buffer.md",
-              },
-              {
-                text: "Java NIO Selector",
-                link: "/other_source_code/java_nio_selector.md",
-              },
-              {
-                text: "promise&future",
+                text: "Promise&Future",
                 link: "/other_source_code/promise_and_future.md",
               },
             ],

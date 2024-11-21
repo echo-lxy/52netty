@@ -2,7 +2,7 @@
 
 ## 前言
 
-在[《处理 OP_READ 事件》](/netty_source_code_parsing/main_task/event_scheduling_layer/io/OP_READ)一文中，我们介绍了 **Netty** 的 **Sub Reactor** 处理网络数据读取的完整过程。当 **Netty** 为我们读取了网络请求数据，并且我们在自己的业务线程中完成了业务处理后，通常需要将业务处理结果返回给客户端。本文将介绍 **Sub Reactor** 如何处理网络数据发送的整个过程。
+在[《处理 OP_READ 事件》](/netty_source_code_parsing/main_task/event_scheduling_layer/io/OP_READ)一文中，我们介绍了 Netty 的 Sub Reactor 处理网络数据读取的完整过程。当 Netty 为我们读取了网络请求数据，并且我们在自己的业务线程中完成了业务处理后，通常需要将业务处理结果返回给客户端。**本文将介绍 Sub Reactor 如何处理网络数据发送的整个过程**。
 
 我们都知道 **Netty** 是一款高性能的异步事件驱动的网络通讯框架，既然是网络通讯框架，那么它主要做的事情就是：
 
@@ -10,12 +10,14 @@
 - 读取连接上的网络请求数据
 - 向连接发送网络响应数据
 
-在之前的系列文章中，我们在介绍 **Netty** 的启动以及接收连接的过程中，看到的是 **OP_ACCEPT** 事件和 **OP_READ** 事件的注册，却没有看到 **OP_WRITE** 事件的注册。
+在之前的系列文章中，我们在介绍 Netty 的启动以及接收连接的过程中，看到的是 OP_ACCEPT 事件和 OP_READ 事件的注册，却没有看到 OP_WRITE 事件的注册。
 
-- **那么在什么情况下，Netty 才会向 SubReactor 去注册 OP_WRITE 事件呢？**
-- **Netty 又是如何对写操作做到异步处理的呢？**
+所以 echo 在此提出两个疑问：
 
-本文笔者将为大家一一揭晓这些谜底。我们仍然以之前的 **EchoServer** 为例进行说明。
+- **在什么情况下，Netty 才会向 Sub Reactor 去注册 OP_WRITE 事件呢？**
+- **Netty 是如何对写操作做到异步处理的呢？**
+
+本文 echo 将为大家一一揭晓这些谜底。我们仍然以之前的 **EchoServer** 为例进行说明。
 
 ```java
 @Sharable
@@ -34,7 +36,7 @@ public class EchoServerHandler extends ChannelInboundHandlerAdapter {
 
 在实际开发中，我们首先要通过解码器将读取到的 `ByteBuffer` 解码转换为我们的业务 `Request` 类，然后在业务线程中进行业务处理。接着，通过编码器将业务 `Response` 类编码为 `ByteBuffer`，最后利用 `ChannelHandlerContext ctx` 的引用发送响应数据。
 
-本文将专注于 Netty 写数据的过程，对于 Netty 编解码相关的内容，笔者会在后续的文章中专门介绍。
+本文将专注于 Netty 写数据的过程，对于 Netty 编解码相关的内容，echo 会在后续的文章中专门介绍。
 
 ## write 方法发送数据
 
@@ -70,7 +72,7 @@ abstract class AbstractChannelHandlerContext implements ChannelHandlerContext, R
 
 在这里我们看到，Netty 的写操作是**异步**的。当我们在业务线程中调用 `channelHandlerContext.write()` 后，Netty 会返回一个 `ChannelFuture`，我们可以在这个 `ChannelFuture` 中添加 `ChannelFutureListener`。这样，当 Netty 将我们要发送的数据写入到底层 Socket 时，它会通过 `ChannelFutureListener` 通知我们写入结果。
 
-以下是业务线中的代码
+以下是业务线中的代码：
 
 ```java
 @Override
@@ -93,10 +95,10 @@ public void channelRead(final ChannelHandlerContext ctx, final Object msg) {
 
 当异步事件在 `pipeline` 中传播时发生异常，异步事件的传播将会停止。因此，在日常开发中，我们需要对写操作中的异常情况进行处理：
 
-- 对于 **inbound** 类异步事件发生异常时，**会触发 `exceptionCaught` 事件传播**。`exceptionCaught` 事件本身也是一种 inbound 事件，传播方向从发生异常的 `ChannelHandler` 开始，一直向后传播直到 `TailContext`。
-- 而对于 **outbound** 类异步事件发生异常时，**不会触发 `exceptionCaught` 事件传播**，通常只是通知相关的 `ChannelFuture`。但如果是 `flush` 事件在传播过程中发生异常，则会触发当前发生异常的 `ChannelHandler` 中的 `exceptionCaught` 事件回调。
+- 对于 **inbound** 类异步事件发生异常时，**会触发 `exceptionCaught` 事件传播**。`exceptionCaught` 事件本身也是一种 inbound 事件，传播方向从发生异常的 `ChannelHandler` 开始，一直向后传播，直到 `TailContext`。
+- 对于 **outbound** 类异步事件发生异常时，**不会触发 `exceptionCaught` 事件传播**，通常只是通知相关的 `ChannelFuture`。但如果是 `flush` 事件在传播过程中发生异常，则会触发当前发生异常的 `ChannelHandler` 中的 `exceptionCaught` 事件回调。
 
-接下来，我们继续回归到写操作的主线来分析。
+接下来，我们将继续回到写操作的主线来进行分析。
 
 ```java
 private void write(Object msg, boolean flush, ChannelPromise promise) {

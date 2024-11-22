@@ -1149,11 +1149,11 @@ bootstrap.childHandler(new MyChannelInitializer<>());
 
 需要注意的是，这个类被标记为 `ChannelHandler.Sharable`，因此实现必须是线程安全的，以便能够被重复使用。
 
-![image-20241122110028014](C:/Users/lxy/AppData/Roaming/Typora/typora-user-images/image-20241122110028014.png)
+<img src="https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202411221152982.png" alt="image-20241122110028014" style="zoom: 80%;" />
 
 当handlerAdd被触发的时候，会初始化Channel并且移除该ChannelHandler
 
-![image-20241122110031692](C:/Users/lxy/AppData/Roaming/Typora/typora-user-images/image-20241122110031692.png)
+<img src="https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202411221152547.png" alt="image-20241122110031692" style="zoom:80%;" />
 
 此 initChannel 一般情况下我们开发人员编写的
 

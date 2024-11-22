@@ -230,22 +230,22 @@ export default defineConfig({
               {
                 text: "服务编排层",
                 items: [
-                  // {
-                  //   text: "分拣流水线：Pipline",
-                  //   link: "/main_task/service_orchestration_layer/pipeline.md",
-                  // },
-                  // {
-                  //   text: "分拣员：ChannelHandler",
-                  //   link: "/main_task/service_orchestration_layer/channelhandler.md",
-                  // },
-                  // {
-                  //   text: "分拣操作台：ChannelHandlerContext",
-                  //   link: "/main_task/service_orchestration_layer/ChannelHandlerContext.md",
-                  // },
-                  // {
-                  //   text: "货物：被传播的 IO 事件",
-                  //   link: "/main_task/service_orchestration_layer/io_event.md",
-                  // },
+                  {
+                    text: "分拣流水线：Pipline",
+                    link: "/main_task/service_orchestration_layer/pipeline.md",
+                  },
+                  {
+                    text: "分拣员：ChannelHandler",
+                    link: "/main_task/service_orchestration_layer/channelhandler.md",
+                  },
+                  {
+                    text: "分拣操作台：ChannelHandlerContext",
+                    link: "/main_task/service_orchestration_layer/ChannelHandlerContext.md",
+                  },
+                  {
+                    text: "货物：被传播的 IO 事件",
+                    link: "/main_task/service_orchestration_layer/io_event.md",
+                  },
                 ],
               },
             ],

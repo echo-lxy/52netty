@@ -2,18 +2,22 @@
 
 ## ChannelHandler 简介
 
-Netty中的ChannelHandler类似于工程对产品流水线生产中：生产线上的每一步的处理器，而生产线则就是Netty中的ChannelPipeline。Netty也正是通过ChannelHandler实现了业务与底层网络的解耦。Netty中的ChannelHandler按照输出字节流向分为In,Out,Duplex三种ChannelHandler，本文主要介绍前面两种，Netty中ChannelHandler关系图如下：
+在Netty中，`ChannelHandler` 类似于产品流水线中的每个处理步骤，它们处理网络数据流，并依赖于 `ChannelPipeline` 来组织整个数据流的处理过程。Netty通过 `ChannelHandler` 实现了业务逻辑与底层网络操作的解耦。
+
+`ChannelHandler` 可以根据数据流向分为三种类型：`In`, `Out` 和 `Duplex`。本文主要介绍前两种类型。
+
+Netty中的 `ChannelHandler` 关系图如下：
 
 ![image-20241031100451212](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202410311004253.png)
 
-- ChannelHander是顶级抽象，基础接口类。
-- ChannelHandlerAdapter则是ChannelHandler的一个适配器，对ChannelHandler添加了新的行为，用于判断当前Handler是否执行共享，ChannelHandler共享是指：如果一个ChannelHandler支持共享，则该ChannelHandler可以被添加到多个ChannelPipeline中。
-- ChannelInboundHandler、ChannelOutboundHandler则是分别对应进站与出站的ChannelHandler处理器。
-- ChannelInboundHandlerAdpater、ChannelOutboundHandlerAdapter分别实现了对应类型的ChannelHandler之外，还实现了ChannelHandlerAdpater接口，这样就有了判断是否是共享ChannelHandler的行为。
+- `ChannelHandler` 是顶级抽象接口，定义了基本的处理方法。
+- `ChannelHandlerAdapter` 是 `ChannelHandler` 的适配器，它为 `ChannelHandler` 提供了新的行为，特别是用于判断当前 `Handler` 是否支持共享。`ChannelHandler` 的共享特性意味着：如果某个 `ChannelHandler` 支持共享，它可以被添加到多个 `ChannelPipeline` 中。
+- `ChannelInboundHandler` 和 `ChannelOutboundHandler` 分别对应进站和出站的 `ChannelHandler` 处理器。
+- `ChannelInboundHandlerAdapter` 和 `ChannelOutboundHandlerAdapter` 实现了对应类型的 `ChannelHandler`，并且继承自 `ChannelHandlerAdapter` 接口，提供了判断是否是共享 `ChannelHandler` 的功能。
 
-我们接下来看看我们常接触到的和其有关系的核心接口和类
+接下来我们看看常用的核心接口和类：
 
-> 处理器`ChannelHandler` 就是用来处理`I/O`事件或拦截`I/O`操作，并将其转发到所属管道 `ChannelPipeline`中的下一个处理器`ChannelHandler`。
+> `ChannelHandler` 是用来处理 I/O 事件或拦截 I/O 操作，并将其转发到所属管道 `ChannelPipeline` 中的下一个处理器。
 
 ### 源码
 
@@ -60,12 +64,12 @@ public interface ChannelHandler {
 }
 ```
 
-> `ChannelHandler` 接口本身非常简单:
->
-> - `handlerAdded(ChannelHandlerContext ctx)`: 当其上下文对象添加到管道后，回调这个方法。
-> - `handlerRemoved(ChannelHandlerContext ctx)`: 当其上下文对象从管道中删除后，回调这个方法。
-> - `exceptionCaught(...)`: 事件处理中抛出异常时，回调这个方法。已被废弃，建议使用子接口 `ChannelInboundHandler` 的 `exceptionCaught(...)` 方法。
-> - `@interface Sharable`： 只有被`@Sharable` 注解的`ChannelHandler` 同一个实例可以多次添加到一个或多个管道 `ChannelPipeline`。
+`ChannelHandler` 接口本身非常简单:
+
+- `handlerAdded(ChannelHandlerContext ctx)`: 当其上下文对象添加到管道后，回调这个方法。
+- `handlerRemoved(ChannelHandlerContext ctx)`: 当其上下文对象从管道中删除后，回调这个方法。
+- `exceptionCaught(...)`: 事件处理中抛出异常时，回调这个方法。已被废弃，建议使用子接口 `ChannelInboundHandler` 的 `exceptionCaught(...)` 方法。
+- `@interface Sharable`： 只有被`@Sharable` 注解的`ChannelHandler` 同一个实例可以多次添加到一个或多个管道 `ChannelPipeline`。
 
 ### 源码注释
 
@@ -96,14 +100,13 @@ public interface ChannelHandler {
 
 ## ChannelInboundHandler 和 ChannelInboundInvoker
 
-这两个接口相关联：
+这两个接口是紧密相关的：
 
-1. `ChannelInboundHandler` 用来处理入站`I/O`事件。
+* **`ChannelInboundHandler`** 用于处理入站的 I/O 事件。
 
-2. `ChannelInboundInvoker`用来传递入站I/O事件。
-
-   > - `ChannelInboundInvoker` 的子接口管道 `ChannelPipeline` , 通过`ChannelInboundInvoker` 的方法，在整个入站处理器 `ChannelInboundHandler` 链表传递入站`I/O`事件。
-   > - `ChannelInboundInvoker` 的子接口上下文 `ChannelHandlerContext` , 通过`ChannelInboundInvoker` 的方法，向 `ChannelInboundHandler` 链表下游传递入站`I/O`事件。
+* **`ChannelInboundInvoker`** 用于传递入站 I/O 事件。
+  * `ChannelInboundInvoker` 的子接口是管道 `ChannelPipeline`，它通过 `ChannelInboundInvoker` 的方法将入站 I/O 事件传递到整个入站处理器链（即 `ChannelInboundHandler` 链表）中。
+  * `ChannelInboundInvoker` 的另一个子接口是上下文 `ChannelHandlerContext`，它通过 `ChannelInboundInvoker` 的方法将入站 I/O 事件传递到 `ChannelInboundHandler` 链表中的下游处理器。
 
 ### ChannelInboundHandler 接口
 
@@ -167,61 +170,6 @@ public interface ChannelInboundHandler extends ChannelHandler {
     void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) throws Exception;
 }
 ```
-
-一共就`9`个方法，分别是:
-
-1. ```
-   void channelRegistered(ChannelHandlerContext ctx)
-   ```
-
-   > 通道`Channel`注册到事件轮询器`EventLoop`中。
-
-2. ```
-   void channelUnregistered(ChannelHandlerContext ctx)
-   ```
-
-   > 通道`Channel` 从其`EventLoop`中注销
-
-3. ```
-   void channelActive(ChannelHandlerContext ctx)
-   ```
-
-   > 通道`Channel` 当前是活动的
-
-4. ```
-   void channelInactive(ChannelHandlerContext ctx)
-   ```
-
-   > 通道`Channel` 当前是不活动的，并已到达其生命周期的终点。
-
-5. ```
-   void channelRead(ChannelHandlerContext ctx, Object msg)
-   ```
-
-   > 当前通道`Channel`从远端接收到消息时调用。
-
-6. `void channelReadComplete(ChannelHandlerContext ctx)`
-
-   > 当读操作读取的最后一条消息已被`channelRead(ChannelHandlerContext, Object)`消费后调用。
-
-
-1. ```
-   void userEventTriggered(ChannelHandlerContext ctx, Object evt)
-   ```
-
-   > 触发用户事件时调用。
-
-2. ```
-   void channelWritabilityChanged(ChannelHandlerContext ctx)
-   ```
-
-   > 在通道`Channel`的可写状态发生改变后调用。
-
-3. ```
-   void exceptionCaught(ChannelHandlerContext ctx, Throwable cause)
-   ```
-
-   > 抛出异常是调用。
 
 ### ChannelInboundInvoker 接口
 
@@ -313,24 +261,21 @@ public interface ChannelInboundInvoker {
 }
 ```
 
-> - 你会发现 `ChannelInboundInvoker` 接口也是 `9` 个方法，和 `ChannelInboundHandler` 接口中的方法是一一对应的。
-> - 只不过`ChannelInboundHandler` 接口的方法，都回传了当前这个`ChannelInboundHandler`对应的上下文对象 `ChannelHandlerContext`。
+- 你会发现 `ChannelInboundInvoker` 接口也是 `9` 个方法，和 `ChannelInboundHandler` 接口中的方法是一一对应的。
+- 只不过`ChannelInboundHandler` 接口的方法，都回传了当前这个`ChannelInboundHandler`对应的上下文对象 `ChannelHandlerContext`。
 
 ## ChannelOutboundHandler 和 ChannelOutboundInvoker
 
-这两个接口相关联：
+这两个接口是紧密相关的：
 
-1. `ChannelOutboundHandler` 用来处理出站`I/O`操作。
+* `ChannelOutboundHandler` 用于处理出站 I/O 操作。
 
-2. `ChannelOutboundInvoker`用来传递出站`I/O`操作。
-   
-   > - `ChannelOutboundInvoker` 的子接口管道 `ChannelPipeline` , 通过`ChannelOutboundInvoker` 的方法，在整个出站处理器`ChannelOutboundHandler` 链表传递出站`I/O`操作。
-   > - `ChannelOutboundInvoker` 的子接口上下文 `ChannelHandlerContext` , 通过`ChannelOutboundInvoker` 的方法，向 `ChannelOutboundHandler` 链表上游传递出站`I/O`操作。
-   > - `ChannelOutboundInvoker` 的子接口通道 `Channel`, 它的`ChannelOutboundInvoker` 方法实现，就是直接调用通道 `Channel` 拥有的管道 `ChannelPipeline`对应方法。
+* `ChannelOutboundInvoker` 用于传递出站 I/O 操作。
+  * `ChannelOutboundInvoker` 的子接口是管道 `ChannelPipeline`，它通过 `ChannelOutboundInvoker` 的方法在整个出站处理器链（即 `ChannelOutboundHandler` 链表）中传递出站 I/O 操作。
+  * `ChannelOutboundInvoker` 的另一个子接口是上下文 `ChannelHandlerContext`，它通过 `ChannelOutboundInvoker` 的方法将出站 I/O 操作传递到 `ChannelOutboundHandler` 链表中的上游处理器。
+  * `ChannelOutboundInvoker` 的子接口是通道 `Channel`，它的 `ChannelOutboundInvoker` 方法实现直接调用通道 `Channel` 拥有的管道 `ChannelPipeline` 对应的方法。
 
 ### `ChannelOutboundHandler` 接口
-
-
 
 ```dart
 /**
@@ -390,17 +335,6 @@ public interface ChannelOutboundHandler extends ChannelHandler {
     void flush(ChannelHandlerContext ctx) throws Exception;
 }
 ```
-
-包括了所有主动的 `IO` 操作：
-
-1. 绑定操作 `bind(...)`
-2. 连接操作 `connect(...)`
-3. 断开连接操作 `disconnect(...)`
-4. 关闭通道 `close(...)`
-5. 取消注册 `deregister(...)`
-6. 手动让通道从远端拉取数据 `read(...)`
-7. 向写缓冲区中写入数据 `write(...)`
-8. 将写缓冲区的数据发送到远端 `flush(...)`
 
 ###  `ChannelOutboundInvoker` 接口
 
@@ -1215,11 +1149,11 @@ bootstrap.childHandler(new MyChannelInitializer<>());
 
 需要注意的是，这个类被标记为 `ChannelHandler.Sharable`，因此实现必须是线程安全的，以便能够被重复使用。
 
-![img](https://cdn.nlark.com/yuque/0/2024/png/35210587/1729918346816-70eb5f2c-5546-43aa-9566-87a66df326ff.png)
+![image-20241122110028014](C:/Users/lxy/AppData/Roaming/Typora/typora-user-images/image-20241122110028014.png)
 
 当handlerAdd被触发的时候，会初始化Channel并且移除该ChannelHandler
 
-![img](https://cdn.nlark.com/yuque/0/2024/png/35210587/1729918408050-7209e1eb-eabd-40b0-ba7c-af682fbc55b4.png)
+![image-20241122110031692](C:/Users/lxy/AppData/Roaming/Typora/typora-user-images/image-20241122110031692.png)
 
 此 initChannel 一般情况下我们开发人员编写的
 

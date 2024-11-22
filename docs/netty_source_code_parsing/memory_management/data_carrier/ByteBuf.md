@@ -1,28 +1,63 @@
-# 数据搬运工：ByteBuf 体系的设计与实现
+# ByteBuf 设计与实现
 
-尽管 ByteBuf 体系涉及到的类较多，可能让人一眼望去有些头疼，但如果从不同角度对其进行分类，整个体系的脉络会变得清晰：
+::: info 转载自（有部分改动）
 
-**从 JVM 内存区域布局来看**，Netty 的 ByteBuf 主要分为 HeapByteBuf（堆内存）和 DirectByteBuf（堆外内存）两种类型。
+[聊一聊 Netty 数据搬运工 ByteBuf 体系的设计与实现 - bin的技术小屋 - 博客园](https://www.cnblogs.com/binlovetech/p/18358350)
 
-**从内存管理的角度来看**，ByteBuf 分为 PooledByteBuf（池化）和 UnpooledByteBuf（非池化）两种子类型。PooledByteBuf 由内存池统一管理，减少了频繁分配和释放的开销；而 UnpaooledByteBuf 则是在需要时临时创建，使用后立即释放。
+:::
 
-**从内存访问的角度**，Netty 将 ByteBuf 分为 UnsafeByteBuf 和普通的 ByteBuf。UnsafeByteBuf 依赖 `Unsafe` 类提供的底层 API 来直接操作内存地址，而普通 ByteBuf 的内存操作则基于 NIO 中的 `ByteBuffer`，更加安全。
+## 前言
 
-**从内存回收的视角**，ByteBuf 可分为带 Cleaner 的 ByteBuf 和不带 Cleaner 的 NoCleanerByteBuf。JDK 的 Cleaner 机制用于管理 NIO `ByteBuffer` 背后的 Native Memory，使内存释放由 JVM 负责；而 NoCleanerByteBuf 背后的 Native Memory 需手动释放，适合更灵活的内存管理需求。
+尽管 ByteBuf 体系涉及的类较多，初看可能让人感到复杂，但如果从不同角度分类，其脉络会变得清晰：
 
-**从内存占用统计的角度**，Netty 进一步将 ByteBuf 分为 InstrumentedByteBuf 和普通的 ByteBuf。InstrumentedByteBuf 带有内存占用的 Metrics 统计，便于监控内存使用情况，而普通 ByteBuf 则不具备此功能。
+- **从 JVM 内存区域布局来看**
 
-**为了实现高效的零拷贝操作**，Netty 引入了 CompositeByteBuf，用于聚合多个 ByteBuf。传统聚合方式通常需要分配一个较大的 `ByteBuf`，然后将多个 ByteBuf 的内容拷贝到新 `ByteBuf` 中。而 CompositeByteBuf 则直接提供一个逻辑上的视图，避免了额外的内存分配和拷贝开销。这里的零拷贝是 Netty 在用户态层面的设计优化，而不是操作系统级别的零拷贝。
+  Netty 的 `ByteBuf` 主要分为两种类型：`HeapByteBuf`（堆内存）和 `DirectByteBuf`（堆外内存）。
 
-此外，Netty 的 ByteBuf 支持引用计数和自动内存泄漏检测。如果出现内存泄漏，Netty 会提供详细的泄漏位置报告。ByteBuf 还支持自动扩容，而 JDK 的 `ByteBuffer` 则不具备此功能。
+- **从内存管理的角度来看**
 
-综上所述，Netty 的 ByteBuf 是对 JDK `ByteBuffer` 的拓展和完善。通过对比，可以更深刻地体会到 Netty 设计的精妙之处。
+  `ByteBuf` 可分为 `PooledByteBuf`（池化）和 `UnpooledByteBuf`（非池化）：
 
-![img](https://cdn.nlark.com/yuque/0/2024/webp/35210587/1729752381876-99410203-d0a6-47cd-b515-b220e22c10f2.webp)
+  - `PooledByteBuf` 由内存池统一管理，减少频繁分配和释放的开销。
+  - `UnpooledByteBuf` 则是按需创建，用完即释放。
+
+- **从内存访问的角度来看**
+
+  Netty 将 `ByteBuf` 分为 `UnsafeByteBuf` 和普通的 `ByteBuf`：
+
+  - `UnsafeByteBuf` 依赖 `Unsafe` 类的底层 API 来直接操作内存地址。
+  - 普通 `ByteBuf` 基于 NIO 的 `ByteBuffer`，安全性更高。
+
+- **从内存回收的视角来看**
+
+  `ByteBuf` 分为带 Cleaner 的 `ByteBuf` 和不带 Cleaner 的 `NoCleanerByteBuf`：
+
+  - 使用 JDK 的 Cleaner 机制时，`ByteBuf` 的内存释放由 JVM 负责。
+  - 而 `NoCleanerByteBuf` 则需要手动释放内存，适合灵活的内存管理需求。
+
+- **从内存占用统计的角度来看**
+
+  Netty 提供 `InstrumentedByteBuf`，它具备内存占用的监控功能，而普通的 `ByteBuf` 则不支持内存占用统计。
+
+- **为了实现高效的零拷贝操作**
+
+  Netty 引入了 `CompositeByteBuf` 用于聚合多个 `ByteBuf`：
+
+  - 传统方式需要分配一个较大的 `ByteBuf` 并拷贝多个小的 `ByteBuf`。
+  - `CompositeByteBuf` 提供逻辑视图，无需额外内存分配和拷贝，体现了用户态的零拷贝设计优化（非操作系统级别）。
+
+此外，Netty 的 `ByteBuf` 还具有以下特点：
+
+- 支持引用计数和自动内存泄漏检测。若出现泄漏，Netty 会提供详细的泄漏位置报告。
+- 支持自动扩容，这点是 JDK 的 `ByteBuffer` 所不具备的。
+
+综上所述，Netty 的 `ByteBuf` 是对 JDK `ByteBuffer` 的全面扩展和优化，展现了 Netty 在性能和设计上的独到之处。
+
+![img](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202411222220432.webp)
 
 ## 1、JDK 中的 ByteBuffer 设计有何不妥
 
-笔者曾在 [ByteBuffer](https://www.yuque.com/onejava/gwzrgm/yeht0ma5ugguw59y)一文中完整的介绍过 JDK ByteBuffer 的整个设计体系，下面我们来简短回忆一下 ByteBuffer 的几个核心要素。
+笔者曾在[《Buffer 源码解析》](/netty_source_code_parsing/nio/Buffer)一文中完整的介绍过 JDK ByteBuffer 的整个设计体系，下面我们来简短回忆一下 ByteBuffer 的几个核心要素。
 
 ```java
 public abstract class Buffer {
@@ -35,8 +70,7 @@ public abstract class Buffer {
 
 - **Capacity**：定义了整个 `Buffer` 的容量，即最多可以容纳多少个元素。`capacity` 之前的空间是 `Buffer` 的可操作区域。值得注意的是，`JDK` 中的 `ByteBuffer` 是不可扩容的，一旦创建就固定了大小。
 - **Position**：用于指向 `Buffer` 中下一个可操作的元素位置，初始值为 `0`。
-
-- - 在写模式下，`position` 指针指向下一个可写入的位置。
+  - 在写模式下，`position` 指针指向下一个可写入的位置。
   - 在读模式下，`position` 指针指向下一个可读取的位置。
     `Buffer` 的读写操作共享同一个 `position` 指针，因此需要根据模式切换不断调整 `position` 位置。
 
@@ -45,9 +79,10 @@ public abstract class Buffer {
 由于 `ByteBuffer` 仅设计了一个 `position` 指针，读写时我们需要通过 `flip()`、`rewind()`、`compact()` 和 `clear()` 等方法在读写模式之间切换 `position`。
 
 **实际应用场景**
+
 在向 `ByteBuffer` 中写入数据时，`position` 指针会随着数据写入逐渐向后移动。写入完成后，如果需要读取刚写入的数据，还需通过 `flip()` 将 `position` 设置为可读位置，从而切换到读模式。这种设计使得 `ByteBuffer` 的读写操作在模式切换时更加灵活。
 
-![img](https://cdn.nlark.com/yuque/0/2024/webp/35210587/1729752501652-051e570b-f720-4216-9362-539369a62ace.webp)
+![img](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202411222221256.webp)
 
 ```java
 public final Buffer flip() {
@@ -60,11 +95,11 @@ public final Buffer flip() {
 
 当 `ByteBuffer` 中的数据全部读取完毕后，如果需要再次向 `ByteBuffer` 写入数据，需要通过 `clear()` 方法重置 `position`，以切换回写模式：
 
-- `**clear()**`：将 `position` 设为 `0`，`limit` 设为 `capacity`，表示整个 `Buffer` 都可以重新写入数据。这不会清空 `Buffer` 中的数据，只是将写入指针归位，使得新的数据可以覆盖先前的内容。
+- `clear()`：将 `position` 设为 `0`，`limit` 设为 `capacity`，表示整个 `Buffer` 都可以重新写入数据。这不会清空 `Buffer` 中的数据，只是将写入指针归位，使得新的数据可以覆盖先前的内容。
 
 这样通过 `clear()` 切换到写模式后，可以安全地继续向 `ByteBuffer` 写入数据。
 
-![img](https://cdn.nlark.com/yuque/0/2024/webp/35210587/1729752547347-b6cde1aa-9511-4c05-8072-da28ee669281.webp)
+![img](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202411222221816.webp)
 
 ```java
 public final Buffer clear() {
@@ -77,14 +112,14 @@ public final Buffer clear() {
 
 如果我们只是部分读取了 `ByteBuffer` 中的数据而未全部读取，接下来要写入数据时，为了避免未被读取的部分被新的写入操作覆盖，需要使用 `compact()` 方法来切换回写模式：
 
-- `**compact()**`：该方法会将尚未读取的数据移到 `Buffer` 的起始位置，并更新 `position` 指针，以便可以从新的 `position` 开始写入新的数据。具体过程如下：
-
-- - 保留未被读取的部分，移动到 `Buffer` 的前面。
+- `compact()`：该方法会将尚未读取的数据移到 `Buffer` 的起始位置，并更新 `position` 指针，以便可以从新的 `position` 开始写入新的数据。具体过程如下：
+  - 保留未被读取的部分，移动到 `Buffer` 的前面。
   - 将 `position` 设为未读取数据的结束位置，而 `limit` 则设置为 `capacity`。
+
 
 使用 `compact()` 方法，可以确保在写入新数据时，不会覆盖 `Buffer` 中尚未读取的内容，从而有效地管理 `ByteBuffer` 的读写状态。
 
-![img](https://cdn.nlark.com/yuque/0/2024/webp/35210587/1729752583297-a3bf13da-08ba-4496-a010-5bfebc117998.webp)
+![img](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202411222221441.webp)
 
 ```java
 class HeapByteBuffer extends ByteBuffer {
@@ -110,25 +145,33 @@ class HeapByteBuffer extends ByteBuffer {
 }
 ```
 
-从上述对 `ByteBuffer` 的操作场景可以看出，使用 `ByteBuffer` 时需要时刻保持清晰的意识，了解哪些部分是可读的，哪些是可写的。稍不留神就可能出错。在复杂的编解码逻辑中，频繁的读写模式切换会让人感到困惑。
+从上述对 `ByteBuffer` 的操作场景可以看出，使用它时**需要始终保持对可读区域和可写区域的清晰意识，否则稍有不慎就可能导致错误**。在复杂的编解码逻辑中，频繁的读写模式切换更是容易让人感到困惑。
 
-除了 `ByteBuffer` 的操作相对繁琐之外，`JDK` 对于 `ByteBuffer` 没有设计池化管理机制。当需要大量使用堆外内存时，我们必须不断创建 `DirectBuffer`，而 `DirectBuffer` 在使用完后又需要进行手动回收。
+除了操作的复杂性之外，`JDK` 的 `ByteBuffer` 还存在以下问题：
 
-`JDK` 对 `DirectBuffer` 的回收存在延迟，只有在执行一次 `Full GC` 后，这些 `DirectBuffer` 依赖的原生内存才会被 `JVM` 自动回收。因此，为了及时回收这些原生内存，我们不得不操心 `DirectBuffer` 的手动释放。
+1. **缺乏池化管理机制**：
+   当需要频繁使用堆外内存时，我们需要不断创建 `DirectBuffer`。使用后，这些 `DirectBuffer` 必须手动回收。
+2. **回收延迟问题**：
+   `JDK` 的 `DirectBuffer` 释放依赖于 `Full GC`，只有在执行一次 `Full GC` 后，`DirectBuffer` 所占用的原生内存才会被 `JVM` 自动回收。这种延迟回收机制可能导致内存使用效率低下。为了解决这个问题，开发者往往需要手动释放 `DirectBuffer`，但这又增加了开发的复杂度。
+3. **缺乏引用计数支持**：
+   `ByteBuffer` 不支持引用计数，因此无法跟踪一个 `DirectBuffer` 被引用的次数以及准确的释放时机。这使得检测内存泄漏变得困难，特别是在复杂的内存管理场景中。
+4. **固定容量设计**：
+   创建 `ByteBuffer` 时，其容量是固定的，无法动态扩容。这带来以下问题：
+   - 如果分配的容量过大，会导致内存浪费。
+   - 如果分配的容量过小，在写入数据时需要频繁检查剩余容量，并手动申请更大的 `ByteBuffer`，然后将数据迁移过去，这显得繁琐且低效。
+5. **聚合操作的内存开销**：
+   在需要合并多个 `ByteBuffer` 时，必须创建一个更大的 `ByteBuffer`，然后将原有的多个 `ByteBuffer` 的内容拷贝到新创建的 `ByteBuffer` 中。这种方式增加了内存分配和数据拷贝的开销。
 
-另外，`JDK` 的 `ByteBuffer` 不支持引用计数设计，因此我们无法知道一个 `DirectBuffer` 被引用了多少次以及何时被释放。这导致我们难以自动检测由 `DirectBuffer` 引起的内存泄漏问题。
+为了解决上述问题，一种优化方案是基于现有的 `ByteBuffer` 创建逻辑上的视图：
 
-`JDK` 的 `ByteBuffer` 也不支持动态按需自适应扩容。创建 `ByteBuffer` 后，其容量是固定的，而我们很难在一开始就准确评估所需的容量。分配过大的容量会造成浪费，而分配过小的容量则需要在写入时频繁检查剩余容量是否足够。如果不够，就需要手动申请一个更大的 `ByteBuffer`，并将原有 `ByteBuffer` 中的数据迁移到新的 `ByteBuffer` 中，这显得非常麻烦。
+- 通过创建视图 `ByteBuffer`，可以在不分配新内存的情况下，直接操作原始内存。
+- 这种方式可以避免内存分配和数据拷贝的额外开销，从而提升效率。
 
-此外，在多个 `JDK` 的 `ByteBuffer` 需要合并聚合时，总是要先创建一个更大的 `ByteBuffer`，然后将原有的多个 `ByteBuffer` 中的内容拷贝到新的 `ByteBuffer` 中，这涉及内存分配和拷贝的开销。
-
-那么，为什么不利用原有的 `ByteBuffer` 所占用的内存空间，在此基础上创建一个逻辑上的视图 `ByteBuffer` 呢？将对视图 `ByteBuffer` 的所有操作转移到原有的内存空间上，这样就能节省重新分配内存和内存拷贝的开销。
-
-接下来，我们将探讨 `Netty` 中的 `ByteBuf` 如何解决并完善上述问题。
+接下来，我们将探讨 `Netty` 的 `ByteBuf` 是如何克服这些限制并提供更加高效和灵活的解决方案的。
 
 ## 2、Netty  对于 ByteBuf 的设计与实现
 
-在之前介绍 JDK 的 ByteBuffer 整体设计时，笔者以 HeapByteBuffer 为例将 ByteBuffer 的设计体系进行了串联。本文将以 DirectByteBuf 为例，帮助大家理解 Netty 中 ByteBuf 的设计体系。
+在之前介绍 `JDK` 的 `ByteBuffer` 整体设计时，笔者以 `HeapByteBuffer` 为例串联了其设计体系。而本文将以 `DirectByteBuf` 为切入点，进一步剖析 `Netty` 中 `ByteBuf` 的设计体系，以帮助更好地理解其核心思想和实际应用。
 
 ### 2.1、ByteBuf 的基本结构
 
@@ -146,18 +189,16 @@ public class UnpooledDirectByteBuf extends AbstractReferenceCountedByteBuf {
 }
 ```
 
-![img](https://cdn.nlark.com/yuque/0/2024/webp/35210587/1729753265047-2f79ade7-913d-426f-897c-b1373060082f.webp)
+![img](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202411222237070.webp)
 
-为了避免 `JDK` 的 `ByteBuffer` 在读写模式下共用一个 `position` 指针所引起的繁琐操作，`Netty` 为 `ByteBuf` 引入了两个独立的指针：`readerIndex` 和 `writerIndex`。
+为了避免 `JDK` 的 `ByteBuffer` 在读写模式下共用一个 `position` 指针所引发的繁琐操作，`Netty` 的 `ByteBuf` 引入了两个独立的指针：`readerIndex` 和 `writerIndex`。
 
-- `**readerIndex**`：指向 `ByteBuf` 中第一个可读字节的位置。
-- `**writerIndex**`：指向 `ByteBuf` 中第一个可写的字节的位置。
+- `readerIndex` 指向 `ByteBuf` 中第一个可读字节的位置。
+- `writerIndex` 指向 `ByteBuf` 中第一个可写字节的位置。
 
-通过引入这两个独立的指针，我们在对 `Netty` 的 `ByteBuf` 进行读写操作时，无需进行繁琐的读写模式切换。这使得读写操作变得更加简单和直观。
+通过这两个独立指针，`ByteBuf` 的读写操作不再需要频繁切换模式，读写过程更加简单、直观。
 
-此外，`Netty` 还引入了 `markedReaderIndex` 和 `markedWriterIndex`，用于支持 `ByteBuf` 相关的标记（mark）和重置（reset）操作。这一设计与 `JDK` 中的实现保持一致，方便用户在读写过程中对指针位置进行标记和恢复。
-
-综上所述，这种设计不仅提高了操作的灵活性和效率，也简化了用户在使用 `ByteBuf` 时的思维负担，使得在复杂的网络编程中可以更加专注于数据的处理。
+此外，`Netty` 还设计了 `markedReaderIndex` 和 `markedWriterIndex`，用于支持 `mark` 和 `reset` 操作。这种机制与 `JDK` 的 `ByteBuffer` 类似，可以在操作过程中标记指针位置并在需要时恢复，极大提高了灵活性。
 
 ```java
 @Override
@@ -225,19 +266,19 @@ public class UnpooledDirectByteBuf extends AbstractReferenceCountedByteBuf {
 }
 ```
 
-因此，`Netty` 中的 `ByteBuf` 可以通过 `readerIndex`、`writerIndex`、`capacity` 和 `maxCapacity` 这四个指针分割成四个部分，具体如下：
+在 `Netty` 中，`ByteBuf` 通过 `readerIndex`、`writerIndex`、`capacity` 和 `maxCapacity` 四个指针将内存划分为以下四个部分：
 
-- **[0, capacity)**：这一部分是在创建 `ByteBuf` 时分配的初始容量，真正占用内存。
-- **[capacity, maxCapacity)**：这一部分表示 `ByteBuf` 可扩容的容量，但尚未分配内存。
-- **[0, readerIndex)**：这一部分字节是已经被读取过的字节，属于可以丢弃的范围。
-- **[readerIndex, writerIndex)**：这一部分字节表示 `ByteBuf` 中可以被读取的字节。
-- **[writerIndex, capacity)**：这一部分表示 `ByteBuf` 的剩余容量，也就是可以写入的字节范围。
+- **[0, capacity)**：表示在创建 `ByteBuf` 时分配的实际内存容量。这是 `ByteBuf` 当前可用的内存范围。
+- **[capacity, maxCapacity)**：表示 `ByteBuf` 的潜在扩容范围，但这部分内存尚未分配，仅在扩容时动态分配。
+- **[0, readerIndex)**：已经被读取的数据，属于可以丢弃的范围。
+- **[readerIndex, writerIndex)**：当前可以被读取的数据，表示已写入但尚未被读取的部分。
+- **[writerIndex, capacity)**：剩余可写入的数据范围，表示未被使用的容量。
 
-这四个指针之间的关系可以用以下不等式表示：
+这些指针之间的关系可以总结为以下不等式：
 
 *0 ≤ readerIndex ≤ writerIndex ≤ capacity ≤ maxCapacity*
 
-通过这种结构，`Netty` 的 `ByteBuf` 提供了清晰的内存管理界面，使得开发者能够更加高效地进行数据读写操作，避免了传统 `ByteBuffer` 中常见的复杂性和混淆。
+通过这种分区设计，`Netty` 的 `ByteBuf` 提供了明确且高效的内存管理接口。开发者可以轻松掌握数据的读写状态，避免了 `JDK` 中 `ByteBuffer` 的复杂模式切换和相关误用，让数据操作更加直观和高效。
 
 ```java
 private static void checkIndexBounds(final int readerIndex, final int writerIndex, final int capacity) {
@@ -304,12 +345,14 @@ final void ensureWritable0(int minWritableBytes) {
 
 ### 2.2、ByteBuf 的读取操作
 
- 在了解了 `ByteBuf` 的基本结构后，我们可以进一步探讨针对 `ByteBuf` 的读写等基本操作。`Netty` 支持以多种基本类型为粒度对 `ByteBuf` 进行读写，同时也支持无符号基本类型的转换以及大小端的转换。下面以 `Byte` 和 `Int` 这两种基本类型为例说明 `ByteBuf` 的读取操作。  
+ 在了解了 `ByteBuf` 的基本结构后，可以进一步探讨 `ByteBuf` 的读写操作。`Netty` 支持以多种基本类型为单位对 `ByteBuf` 进行读写，还支持无符号基本类型的转换以及大小端的切换。以下以 `Byte` 和 `Int` 两种基本类型为例说明 `ByteBuf` 的读取操作。
 
-`ByteBuf` 中的 `get` 方法用于从 `ByteBuf` 中读取数据，而不会改变其 `readerIndex` 的位置。这使得我们可以在不影响后续读取操作的情况下访问数据。以下是一些常用的方法：
+`ByteBuf` 提供了 `get` 方法，用于读取数据而不改变 `readerIndex` 的位置。这允许在不影响后续读取的情况下访问数据。以下是一些常用方法：
 
-- `**getByte(int index)**`：从 `ByteBuf` 中的指定位置 `index` 读取一个 `Byte`。此方法会返回指定位置的字节值，但不会移动 `readerIndex`。
-- `**getUnsignedByte(int index)**`：从 `ByteBuf` 中的指定位置 `index` 读取一个 `Byte`，并将其转换为无符号 `Byte`。同样，此方法不会改变 `readerIndex` 的位置。
+- `getByte(int index)`：从 `ByteBuf` 中的指定位置 `index` 读取一个 `Byte`，返回该位置的字节值，且不会移动 `readerIndex`。
+- `getUnsignedByte(int index)`：从 `ByteBuf` 中的指定位置 `index` 读取一个字节，并将其转换为无符号的 `Byte` 值，且同样不会改变 `readerIndex` 的位置。
+
+以上操作便于在特定场景中灵活访问 `ByteBuf` 数据，同时保持读取指针的原始状态，以供后续操作使用。
 
 ```java
 public abstract class AbstractByteBuf extends ByteBuf {
@@ -332,9 +375,9 @@ public abstract class AbstractByteBuf extends ByteBuf {
 
 在 `ByteBuf` 的实现中，底层依赖于一个抽象方法 `_getByte`，该方法由 `AbstractByteBuf` 的具体子类负责实现。以 `UnpooledDirectByteBuf` 类为例，其实现方式如下：
 
-- `**_getByte**` **方法**：在 `UnpooledDirectByteBuf` 的实现中，`_getByte` 操作被直接代理给其底层依赖的 JDK `DirectByteBuffer`。这种设计使得 `UnpooledDirectByteBuf` 能够利用 JDK 提供的高效内存操作，同时保持 `ByteBuf` 的统一接口。
+- `_getByte` 方法：在 `UnpooledDirectByteBuf` 的实现中，`_getByte` 操作直接委托给底层依赖的 JDK `DirectByteBuffer`。这种设计使 `UnpooledDirectByteBuf` 能够利用 JDK 提供的高效内存操作，同时保持 `ByteBuf` 的统一接口。
 
-这种抽象和委托的设计模式为 `ByteBuf` 的灵活性和可扩展性提供了支持。具体子类可以根据需要实现特定的读写逻辑，而无需修改公共 API，从而简化了代码的维护和扩展。通过这种方式，`Netty` 能够在不同的内存管理方案之间切换，同时提供一致的用户体验。
+这种抽象与委托的设计模式为 `ByteBuf` 提供了良好的灵活性和可扩展性。具体子类可以根据需求实现特定的读写逻辑，而无需修改公共 API，简化了代码的维护与扩展。通过这种方式，`Netty` 可以在不同的内存管理方案之间灵活切换，同时为开发者提供一致的操作体验。
 
 ```java
 public class UnpooledDirectByteBuf  {
@@ -348,7 +391,7 @@ public class UnpooledDirectByteBuf  {
 }
 ```
 
-而在 UnpooledUnsafeDirectByteBuf 类的实现中，则是通过 `sun.misc.Unsafe` 直接从对应的内存地址中读取。
+而在 `UnpooledUnsafeDirectByteBuf` 类的实现中，则是通过 `sun.misc.Unsafe` 直接从对应的内存地址中读取。
 
 ```java
 public class UnpooledUnsafeDirectByteBuf {
@@ -399,22 +442,24 @@ public ByteBuf getBytes(int index, ByteBuf dst, int length) {
 public abstract ByteBuf getBytes(int index, ByteBuf dst, int dstIndex, int length);
 ```
 
-使用 `getBytes` 方法可以将原有 `ByteBuf` 中的数据读取到目标 `ByteBuf` 中。在这个过程中，原 `ByteBuf` 的 `readerIndex` 不会发生变化，但目标 `ByteBuf` 的 `writerIndex` 会相应调整。
+使用 `getBytes` 方法，可以将原始 `ByteBuf` 中的数据读取到目标 `ByteBuf` 中。在此过程中，原始 `ByteBuf` 的 `readerIndex` 不会发生变化，而目标 `ByteBuf` 的 `writerIndex` 会相应调整。
 
-- 在 `UnpooledDirectByteBuf` 类的实现中，`getBytes` 操作直接代理给底层的 JDK `DirectByteBuffer`，从而利用其高效的内存访问能力。
-- 对于 `UnpooledUnsafeDirectByteBuf` 类，则通过 `UNSAFE.copyMemory` 方法直接根据内存地址进行数据拷贝，这种方法提供了更高的性能。
+- 在 `UnpooledDirectByteBuf` 的实现中，`getBytes` 操作直接委托给底层 JDK 的 `DirectByteBuffer`，以充分利用其高效的内存访问能力。
+- 对于 `UnpooledUnsafeDirectByteBuf`，则通过 `UNSAFE.copyMemory` 方法基于内存地址直接进行数据拷贝，从而实现更高的性能。
 
- `public abstract ByteBuf getBytes(int index, ByteBuf dst, int length);`
+方法定义如下：
 
-官方注释：
+```java
+public abstract ByteBuf getBytes(int index, ByteBuf dst, int length);
+```
 
-将此缓冲区的数据传输到指定的目标，从指定的绝对索引开始。该方法基本上与 `getBytes(int, ByteBuf, int, int)` 相同，区别在于该方法会将目标的 **writerIndex** 增加传输的字节数，而 `getBytes(int, ByteBuf, int, int)` 不会。该方法不会修改源缓冲区（即 **this**）的 **readerIndex** 或 **writerIndex**。  
+源码注释说明： 该方法将当前缓冲区的数据从指定的绝对索引开始传输到目标缓冲区。与 `getBytes(int, ByteBuf, int, int)` 方法类似，不同点在于该方法会增加目标缓冲区的 `writerIndex`，而后者不会。此操作不会修改源缓冲区（`this`）的 `readerIndex` 或 `writerIndex`。
 
+另一方面，`ByteBuf` 提供的 `read` 方法不仅用于数据读取，还会改变 `readerIndex` 的位置。例如：
 
+- `readByte` 方法：通过 `_getByte` 从 `ByteBuf` 中读取一个字节，并自动将 `readerIndex` 向后移动一位。这种设计在执行数据读取的同时自动管理 `readerIndex`，简化了用户操作。
 
-另一方面，`ByteBuf` 中的 `read` 方法不仅用于读取数据，还会改变其 `readerIndex` 的位置。例如：
-
-- `**readByte**` **方法**：首先通过 `_getByte` 从 `ByteBuf` 中读取一个字节，然后将 `readerIndex` 向后移动一位。这种设计使得 `read` 方法在执行数据读取的同时，也会自动管理 `readerIndex` 的状态，简化了用户的操作。
+通过这种分离 `get` 和 `read` 方法的设计，`ByteBuf` 提供了灵活的操作模式，既适合需要保持索引不变的场景，也适合顺序读取的场景。
 
 ```java
 @Override
@@ -427,7 +472,7 @@ public byte readByte() {
 }
 ```
 
- 同样，Netty 也提供了从 `ByteBuf` 中批量读取数据的方法 `readBytes`。我们可以通过 `readBytes` 方法将一个 `ByteBuf` 中的数据读取到另一个 `ByteBuf` 中。需要注意的是，这里 Netty 会改变原 `ByteBuf` 的 `readerIndex` 以及目标 `ByteBuf` 的 `writerIndex`。  
+同样，Netty 也提供了从 `ByteBuf` 中批量读取数据的方法 `readBytes`。我们可以通过 `readBytes` 方法将一个 `ByteBuf` 中的数据读取到另一个 `ByteBuf` 中。需要注意的是，这里 Netty 会改变原 `ByteBuf` 的 `readerIndex` 以及目标 `ByteBuf` 的 `writerIndex`。  
 
 ```java
 @Override
@@ -454,7 +499,12 @@ public ByteBuf readBytes(ByteBuf dst, int dstIndex, int length) {
 }
 ```
 
-除此之外，Netty 还支持将 ByteBuf 中的数据读取到不同的目的地，比如，读取到 JDK ByteBuffer 中，读取到 FileChannel 中，读取到 OutputStream 中，以及读取到 GatheringByteChannel 中。
+除此之外，Netty 提供了丰富的接口，支持将 `ByteBuf` 中的数据读取到多种不同的目标。这些目标包括：
+
+- **读取到 JDK 的 `ByteBuffer` 中**：通过直接与 `ByteBuffer` 交互，便于利用 JDK 的标准工具进行操作。
+- **读取到 `FileChannel` 中**：支持将 `ByteBuf` 的内容写入文件通道中，从而实现与文件系统的高效交互。
+- **读取到 `OutputStream` 中**：允许将数据流式输出到指定的输出流，常用于网络数据传输或文件写入。
+- **读取到 `GatheringByteChannel` 中**：适合用于聚合写操作，支持将 `ByteBuf` 的内容写入到多个目标中，例如同时写入多个网络连接。
 
 ```java
 public abstract ByteBuf readBytes(ByteBuffer dst);
@@ -493,7 +543,7 @@ public class UnpooledDirectByteBuf  {
 }
 ```
 
- 在 `UnpooledUnsafeDirectByteBuf` 的实现中，由于是通过 `sun.misc.Unsafe` 直接对内存地址进行操作，因此需要考虑字节序转换的细节。Netty 的 `ByteBuf` 默认采用大端字节序，因此在这里可以直接将低地址的字节依次放入 `Int` 数据的高位。这样可以确保在读取数据时遵循网络协议的字节序要求。  
+在 `UnpooledUnsafeDirectByteBuf` 的实现中，由于是通过 `sun.misc.Unsafe` 直接对内存地址进行操作，因此需要考虑字节序转换的细节。Netty 的 `ByteBuf` 默认采用大端字节序，因此在这里可以直接将低地址的字节依次放入 `Int` 数据的高位。这样可以确保在读取数据时遵循网络协议的字节序要求。  
 
 ```java
 public class UnpooledUnsafeDirectByteBuf {
@@ -513,7 +563,7 @@ final class UnsafeByteBufUtil {
 }
 ```
 
-同时 Netty 也支持以小端字节序来从 ByteBuf 中读取 Int 数据，这里就涉及到字节序的转换了。
+同时 Netty 也支持以小端字节序来从 `ByteBuf` 中读取 Int 数据，这里就涉及到字节序的转换了。
 
 ```java
 @Override
@@ -527,7 +577,7 @@ public int readIntLE() {
 protected abstract int _getIntLE(int index);
 ```
 
-在 UnpooledDirectByteBuf 的实现中，首先通过其依赖的 JDK DirectByteBuffer    以大端序读取一个 Int 数据，然后通过 `ByteBufUtil.swapInt` 切换成小端序返回。
+在 `UnpooledDirectByteBuf` 的实现中，首先通过其依赖的 JDK `DirectByteBuffer`    以大端序读取一个 Int 数据，然后通过 `ByteBufUtil.swapInt` 切换成小端序返回。
 
 ```java
 public class UnpooledDirectByteBuf  {
@@ -539,7 +589,7 @@ public class UnpooledDirectByteBuf  {
 }
 ```
 
-在 UnpooledUnsafeDirectByteBuf 的实现中，则是直接将低地址上的字节依次放到 Int 数据的低位上就可以了。
+在 `UnpooledUnsafeDirectByteBuf` 的实现中，则是直接将低地址上的字节依次放到 Int 数据的低位上就可以了。
 
 ```java
 public class UnpooledUnsafeDirectByteBuf {
@@ -559,7 +609,7 @@ final class UnsafeByteBufUtil {
 }
 ```
 
-另外 Netty 也支持从 ByteBuf 中读取基本类型的 `Unsigned 类型`。
+另外 Netty 也支持从 `ByteBuf` 中读取基本类型的 `Unsigned 类型`。
 
 ```java
 @Override
@@ -582,7 +632,7 @@ public long readUnsignedIntLE() {
 1. **第一层语义**：比较明显，用于表示当前 `ByteBuf` 的读取位置。当我们调用 `readBytes` 方法时，就是从 `readerIndex` 开始读取数据。当 `readerIndex` 等于 `writerIndex` 时，`ByteBuf` 就不可读取了。
 2. **第二层语义**：比较含蓄，用于表示当前 `ByteBuf` 可以被丢弃的字节数。由于 `readerIndex` 用于指示当前的读取位置，位于 `readerIndex` 之前的字节必然是已经被读取完毕的。继续保留这些已读取的字节在 `ByteBuf` 中并没有必要，反而会浪费空间。因此，腾出这些空间可以为后续写入更多数据提供便利。
 
-![img](https://cdn.nlark.com/yuque/0/2024/webp/35210587/1729755623777-7ebb57c4-d25d-4b8d-99e3-e0278360b6b3.webp)
+![img](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202411222244388.webp)
 
 所以一个 ByteBuf 真正的剩余可写容量的计算方式除了上小节中介绍的 `writableBytes()` 方法返回的字节数之外还需要在加上 readerIndex。
 
@@ -599,23 +649,23 @@ public int writableBytes() {
 
 接下来，如果我们考虑 `readerIndex < writerIndex` 的情况，这表示 `ByteBuf` 中还有未读取的字节。在这种情况下，丢弃已读取的字节可以有效释放空间，提升写入效率。
 
-![img](https://cdn.nlark.com/yuque/0/2024/webp/35210587/1729755700094-b444e582-7a82-43d0-b509-bd7ae903f06f.webp)
+![img](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202411222244359.webp)
 
 `ByteBuf` 目前可读取的字节范围为 `[readerIndex, writerIndex)`，位于 `readerIndex` 之前的字节均可以被丢弃。接下来，我们需要将 `[readerIndex, writerIndex)` 这段范围的字节全部拷贝到 `ByteBuf` 的最前面，以直接覆盖 `readerIndex` 之前的字节。
 
 然后，调整 `readerIndex` 和 `writerIndex` 的位置。由于 `readerIndex` 之前的字节现在已被可读字节覆盖，因此 `readerIndex` 需要重新调整为 0，而 `writerIndex` 则向前移动 `readerIndex` 的大小。这样一来，当前 `ByteBuf` 的可写容量就多出了 `readerIndex` 的大小，从而提升了写入效率。
 
-![img](https://cdn.nlark.com/yuque/0/2024/webp/35210587/1729755727777-37466ef3-089b-463a-8096-2c4a5c662db0.webp)
+![img](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202411222244882.webp)
 
 另外一种情况是 `readerIndex = writerIndex` 的情况，这种情况下表示 ByteBuf 中已经没有可读字节了。
 
-![img](https://cdn.nlark.com/yuque/0/2024/webp/35210587/1729755752700-fd59544a-153c-421a-a138-f7c6af3b823b.webp)
+![img](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202411222245906.webp)
 
 
 
 既然 ByteBuf 中已经没有任何可读字节了，自然也就不需要将可读字节拷贝到 ByteBuf 的开头了，直接将 readerIndex 和 writerIndex 重新调整为 0 即可。
 
-![img](https://cdn.nlark.com/yuque/0/2024/webp/35210587/1729755771102-6ef398c1-c100-409d-aeeb-84941621166d.webp)
+![img](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202411222245844.webp)
 
 ```java
 public abstract class AbstractByteBuf extends ByteBuf {
@@ -800,7 +850,7 @@ Netty 的设计允许开发者灵活高效地管理字节流的读写，尤其�
 
  在每次向 `ByteBuf` 写入数据时，Netty 会调用 `ensureWritable0` 方法，以判断当前 `ByteBuf` 的剩余可写容量（`capacity - writerIndex`）是否能够满足本次写入的数据大小 `minWritableBytes`。如果剩余容量不足，则需要对 `ByteBuf` 进行扩容，但扩容后的容量不能超过 `maxCapacity` 的大小。  
 
-![img](https://cdn.nlark.com/yuque/0/2024/webp/35210587/1729756091979-ddf00b34-ce5c-4d91-a229-7a99be6dde3c.webp)
+![img](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202411222250111.webp)
 
 ```java
 final void ensureWritable0(int minWritableBytes) {
@@ -889,7 +939,7 @@ while (newCapacity < minNewCapacity) {
 - 如果 `minNewCapacity` 在 [65, 128] 范围内，那么扩容后的 `newCapacity` 就是 128。
 - 如果 `minNewCapacity` 在 [129, 256] 范围内，那么扩容后的 `newCapacity` 就是 256。
 
-![img](https://cdn.nlark.com/yuque/0/2024/webp/35210587/1729757686549-ab9b5430-0e69-45c6-94e4-38ff2fb017f1.webp)
+![img](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202411222250568.webp)
 
 
 
@@ -1140,11 +1190,11 @@ public class AdaptiveRecvByteBufAllocator {
 
 当索引容量`小于 512` 时，`SIZE_TABLE` 中定义的容量是从 `16` 开始按照 `16` 递增。
 
-![img](https://cdn.nlark.com/yuque/0/2024/webp/35210587/1729758398590-855b138f-3f3e-4cb2-81f8-b6bad8ffec8f.webp)
+![img](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202411222250118.webp)
 
 当索引容量`大于 512` 时，SIZE_TABLE 中定义的容量是按前一个索引容量的 `2 倍`递增。
 
-![img](https://cdn.nlark.com/yuque/0/2024/webp/35210587/1729758409809-f7db2cef-6a06-457e-b4e0-976e3b3b7c98.webp)
+![img](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202411222250142.webp)
 
 当前 `ByteBuf` 的初始容量为 2048，它在 `SIZE_TABLE` 中的索引为 33。在一轮读取循环结束后，Netty 会根据 `totalBytesRead` 来判断是否需要对 `ByteBuf` 进行缩容或扩容。
 
@@ -1176,7 +1226,7 @@ private void record(int actualReadBytes) {
 
  Netty 为 `ByteBuf` 引入了引用计数机制。在 `ByteBuf` 的整个设计体系中，所有的 `ByteBuf` 都继承自一个抽象类 `AbstractReferenceCountedByteBuf`，该类实现了接口 `ReferenceCounted`。  
 
-![img](https://cdn.nlark.com/yuque/0/2024/webp/35210587/1729758608422-298a7b62-7485-4138-8ddc-fc4c8541cc3a.webp)
+![img](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202411222250599.webp)
 
 ```java
 public interface ReferenceCounted {
@@ -1335,13 +1385,13 @@ public abstract class AbstractReferenceCountedByteBuf extends AbstractByteBuf {
 
 让我们先假设一个这样的场景，现在有一个 ByteBuf，它当前的 refCnt = 1 ，线程 1 对这个 ByteBuf 执行 `release()` 操作。
 
-![img](https://cdn.nlark.com/yuque/0/2024/webp/35210587/1729758905305-f31750b0-7a5f-4d6c-9f28-75e358004b0a.webp)
+![img](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202411222250736.webp)
 
 在 4.1.17.Final 的实现中，Netty 会首先通过 getAndAdd 将 refCnt 更新为 0 ，然后接着调用 `deallocate()` 方法释放 Native Memory ，很简单也很清晰是吧，让我们再加点并发复杂度上去。
 
 现在我们在上图步骤一与步骤二之间插入一个线程 2 ， 线程 2 对这个 ByteBuf 并发执行 `retain()` 方法。
 
-![img](https://cdn.nlark.com/yuque/0/2024/webp/35210587/1729759126591-25ca6ef4-2fb9-4c49-b764-7a548261833a.webp)
+![img](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202411222250215.webp)
 
 在 4.1.17.Final 的实现中，线程 2 首先通过 getAndAdd 将 refCnt 从 0 更新为 1，紧接着线程 2 就会发现 refCnt 原来的值 oldRef 是等于 0 的，也就是说线程 2 在调用  `retain()` 的时候，ByteBuf 的引用计数已经为 0 了，并且线程 1 已经开始准备释放 Native Memory 了。
 
@@ -1349,7 +1399,7 @@ public abstract class AbstractReferenceCountedByteBuf extends AbstractByteBuf {
 
 现在看来一切风平浪静，都是按照我们的设想有条不紊的进行，我们不妨再加点并发复杂度上去。在上图步骤 1.1 与步骤 1.2 之间在插入一个线程 3 ， 线程 3 对这个 ByteBuf 再次并发执行 `retain()` 方法。
 
-![img](https://cdn.nlark.com/yuque/0/2024/webp/35210587/1729759251741-3d988a82-78b3-4a32-a6f2-f56fdeef5073.webp)
+![img](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202411222249650.webp)
 
 由于引用计数的更新（步骤 1.1）与引用计数的回退（步骤 1.2）这两个操作并不是一个原子操作，如果在这两个操作之间不巧插入了一个线程 3 ，线程 3 在并发执行 `retain()` 方法的时候，首先会通过 getAndAdd 将引用计数 refCnt 从 1 增加到 2 。
 
@@ -1555,7 +1605,7 @@ private T retain0(T instance, final int increment, final int rawIncrement) {
 
 最后会判断一下 refCnt 字段是否发生溢出，如果溢出，则进行回退，并抛出异常。下面我们仍然以之前的并发场景为例，用一个具体的例子，来回味一下奇偶设计的精妙之处。
 
-![img](https://cdn.nlark.com/yuque/0/2024/webp/35210587/1729760530440-430cdfa8-5a36-42b5-ab7a-301bfdc5623d.webp)
+![img](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202411222249011.webp)
 
 现在线程 1 对一个 refCnt 为 2 的 ByteBuf 执行 release 方法，这时 ByteBuf 的逻辑引用计数就为 0 了，对于一个没有任何引用的 ByteBuf 来说，新版的设计中它的 refCnt 只能是一个奇数，不能为 0 ，所以这里 Netty 会将 refCnt 设置为 1 。然后在步骤 2 中调用 deallocate 方法释放 Native Memory。
 
@@ -1579,7 +1629,7 @@ private T retain0(T instance, final int increment, final int rawIncrement) {
 
 答案是不行的，因为 if 判断与 getAndAdd 更新这两个操作之间仍然不是原子的，多线程可以在这个间隙仍然有并发执行 retain 方法的可能，如下图所示：
 
-![img](https://cdn.nlark.com/yuque/0/2024/webp/35210587/1729760596456-73f3d835-0c5c-423b-87c4-f20bf3036871.webp)
+![img](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202411222249357.webp)
 
 在线程 1 执行 if 判断和 getAndAdd 更新这两个操作之间，线程 2 看到的 refCnt 其实 2 ，然后线程 2 会将 refCnt 加到 4 ，线程 3 紧接着会将 refCnt 增加到 6 ，在线程 2 和线程 3 看来这个 ByteBuf 完全是正常的，但是线程 1 马上就会释放 Native Memory 了。
 
@@ -1709,7 +1759,7 @@ public int readableBytes() {
 }
 ```
 
-![img](https://cdn.nlark.com/yuque/0/2024/webp/35210587/1729761212148-c9f97a36-e6e6-4661-95e9-34a12c2a1ca7.webp)
+![img](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202411222249762.webp)
 
 下面我们来看一下 `slice() ` 方法创建视图 ByteBuf 的逻辑实现：
 
@@ -1824,7 +1874,7 @@ public ByteBuf duplicate() {
 
 但和  `slice()` 不同的是， `duplicate()` 是完全复刻了原生 ByteBuf，复刻出来的视图 ByteBuf 虽然与原生 ByteBuf 都有各自独立的  readerIndex，writerIndex，capacity，maxCapacity。但他们的值都是相同的。duplicate 视图  ByteBuf 也是和原生 ByteBuf 共用同一块 Native Memory 。
 
-![img](https://cdn.nlark.com/yuque/0/2024/webp/35210587/1729761376905-b89c8471-dd35-4284-a8e3-2dc2d96265af.webp)
+![img](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202411222249042.webp)
 
 ```java
 public class DuplicatedByteBuf extends AbstractDerivedByteBuf {
@@ -1878,7 +1928,7 @@ public abstract class AbstractByteBuf extends ByteBuf {
 
 `copy()` 方法是对原生 ByteBuf 的 `[readerIndex , writerIndex)`这段数据范围内容进行拷贝。copy 出来的 ByteBuf，它的 readerIndex = 0 ， writerIndex = capacity = 原生 ByteBuf 的 `readableBytes()`。maxCapacity 与原生 maxCapacity 相同。
 
-![img](https://cdn.nlark.com/yuque/0/2024/webp/35210587/1729761424396-1f50731f-1faa-4966-ba03-15be099baf98.webp)
+![img](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202411222248270.webp)
 
 ```java
 public class UnpooledDirectByteBuf  {
@@ -1944,7 +1994,7 @@ componentCount 表示当前 CompositeByteBuf 中包含的 Component 个数。每
 
 CompositeByteBuf 与其底层聚合的真实 ByteBuf 架构设计关系，如下图所示：
 
-![img](https://cdn.nlark.com/yuque/0/2024/webp/35210587/1729762321300-b7b794f9-0ce6-435b-9a61-22beb7cd8b59.webp)
+![img](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202411222248511.webp)
 
 而创建一个 CompositeByteBuf 的核心其实就是创建底层的 components 数组，后续添加到该 CompositeByteBuf 的所有原生 ByteBuf 都会被组织在这里。
 
@@ -1978,11 +2028,11 @@ private static Component[] newCompArray(int initComponents, int maxNumComponents
 
 下面笔者就带着大家从外到内，从易到难地一一拆解 CompositeByteBuf 中的那些核心设计要素。从 CompositeByteBuf 的最外层来看，其实我们并不陌生，对于用户来说它就是一个普通的 ByteBuf，拥有自己独立的 readerIndex ，writerIndex 。
 
-![img](https://cdn.nlark.com/yuque/0/2024/webp/35210587/1729762475060-17c9afc7-0704-4cbd-853c-9366046e21a9.webp)
+![img](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202411222248970.webp)
 
 但 CompositeByteBuf 中那些逻辑上看起来连续的字节，背后其实存储在不同的原生 ByteBuf 中。不同 ByteBuf 的内存之间其实是不连续的。
 
-![img](https://cdn.nlark.com/yuque/0/2024/webp/35210587/1729762505293-59797861-b9e1-474e-a060-9d90fee8f4a0.webp)
+![img](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202411222248941.webp)
 
 那么现在问题的关键就是我们如何判断 CompositeByteBuf 中的某一段逻辑数据背后对应的究竟是哪一个真实的 ByteBuf，如果我们能够通过 CompositeByteBuf 的相关 Index , 找到这个 Index 背后对应的 ByteBuf，近而可以找到 ByteBuf 的 Index ，这样是不是就可以将 CompositeByteBuf 的逻辑操作转换成对真实内存的读写操作了。
 
@@ -2008,7 +2058,7 @@ private static final class Component {
 
 一个 Component 在 CompositeByteBuf 的视角中所能表示的数据逻辑范围是 `[offset , endOffset)`。
 
-![img](https://cdn.nlark.com/yuque/0/2024/webp/35210587/1729762565037-56e2cfe1-0f0f-42b6-bbd6-6c256005e3bd.webp)
+![img](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202411222248241.webp)
 
 比如上图中第一个绿色的 ByteBuf , 它里边存储的数据组成了 CompositeByteBuf 中 `[0 , 4)` 这段逻辑数据范围。第二个黄色的 ByteBuf，它里边存储的数据组成了 CompositeByteBuf 中 `[4 , 8)` 这段逻辑数据范围。第三个蓝色的 ByteBuf，它里边存储的数据组成了 CompositeByteBuf 中 `[8 , 12)` 这段逻辑数据范围。 上一个 Component 的 endOffset 恰好是下一个 Component 的 offset 。
 
@@ -2018,7 +2068,7 @@ private static final class Component {
 
 所以第二个 Component 的 srcAdjustment 就是 -4 ， 这样我们读取 CompositeByteBuf 的时候，首先将它的 readerIndex 加上 srcAdjustment 就得到了 ByteBuf 的 readerIndex ，后面就是普通的 ByteBuf 读取操作了。
 
-![img](https://cdn.nlark.com/yuque/0/2024/webp/35210587/1729762574453-5e43e531-2b18-40cc-b5b2-027738bb3966.webp)
+![img](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202411222248502.webp)
 
 在比如说，我们要对 CompositeByteBuf 进行写操作，当前的 writerIndex 为 10 ，对应的是第三个蓝色的 ByteBuf，它的 writerIndex 为 2 。
 
@@ -2048,7 +2098,7 @@ abstract class AbstractUnpooledSlicedByteBuf {
 
 所以在读取操作之前，我们需要将 CompositeByteBuf 的 readerIndex 加上 adjustment 得到 buf 的 readerIndex，近而将读取操作转移到 buf 中。其实就和上小节中介绍的视图 ByteBuf 是一模一样的，在读写之前都需要修正相关的 index 。
 
-![img](https://cdn.nlark.com/yuque/0/2024/webp/35210587/1729762678630-3254bc34-f3ef-48ab-b04c-4ce71270744a.webp)
+![img](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202411222248770.webp)
 
 ```java
 @Override
@@ -2188,7 +2238,7 @@ CompositeByteBuf(ByteBufAllocator alloc, boolean direct, int maxNumComponents,
 
 在整个 CompositeByteBuf 的构造过程中，最核心也是最复杂的步骤其实就是 `addComponents0` 方法，将多个 ByteBuf  有序的添加到 CompositeByteBuf 的 components 数组中看似简单，其实还有很多种复杂的情况需要考虑。
 
-![img](https://cdn.nlark.com/yuque/0/2024/webp/35210587/1729762932037-00b1f742-43b8-479c-bf49-49645be4a9b5.webp)
+![img](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202411222247259.webp)
 
 复杂之处在于这些 ByteBuf 需要插在 components 数组的哪个位置上 ？ 比较简单直观的情况是我们直接在 components 数组的末尾插入，也就是说要插入的位置索引 cIndex 等于 componentCount。这里分为两种情况：
 
@@ -2202,7 +2252,7 @@ CompositeByteBuf(ByteBufAllocator alloc, boolean direct, int maxNumComponents,
 System.arraycopy(components, i, components, i + count, size - i);
 ```
 
-![img](https://cdn.nlark.com/yuque/0/2024/webp/35210587/1729763010694-eb1f5e7f-7623-4203-96a9-6ff5bdfb33e7.webp)
+![img](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202411222247140.webp)
 
 在复杂一点的情况就是 components 数组需要扩容，当一个 CompositeByteBuf 刚刚被初始化出来的时候，它的 components 数组长度等于 maxNumComponents。
 
@@ -2237,15 +2287,15 @@ newArr = Arrays.copyOf(components, newArrSize, Component[].class);
 
 这样新的 components 数组就有位置可以容纳本次需要加入的 ByteBuf 了。
 
-![img](https://cdn.nlark.com/yuque/0/2024/webp/35210587/1729763074491-ec21182d-c4bc-4414-b255-8795b8345c91.webp)
+![img](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202411222247635.webp)
 
 如果我们希望在原来 components 数组的中间插入，也就是 `cIndex < componentCount` 的情况，如下图所示：
 
-![img](https://cdn.nlark.com/yuque/0/2024/webp/35210587/1729763086150-df62f958-1838-4b01-ad63-ee5e682d4c0c.webp)
+![img](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202411222247749.webp)
 
 这种情况在扩容的时候就不能原样拷贝原 components 数组了，而是首先通过 `System.arraycopy` 将 `[0 , cIndex)` 这段范围的内容拷贝过去，在将 `[cIndex , componentCount) `这段范围的内容拷贝到新数组的 `cIndex + count` 位置处。
 
-![img](https://cdn.nlark.com/yuque/0/2024/webp/35210587/1729763104343-96be9117-668e-447d-83af-a937035dc77b.webp)
+![img](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202411222247791.webp)
 
 这样一来，就在新 components 数组的 cIndex 索引处，空出了两个位置出来用来添加本次这两个 ByteBuf。最后更新 componentCount 的值。以上腾挪空间的逻辑封装在 shiftComps 方法中：
 
@@ -2313,7 +2363,7 @@ private static final class Component {
 }
 ```
 
-![img](https://cdn.nlark.com/yuque/0/2024/webp/35210587/1729763162764-c55d6ae4-266e-4b09-8a8a-bbd2ecd5c015.webp)
+![img](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202411222246871.webp)
 
 我们首先需要初始化 Component 实例的 offset ， endOffset 属性，前面我们已经介绍了，一个 Component 在 CompositeByteBuf 的视角中所能表示的数据逻辑范围是 `[offset , endOffset)`。在 components 数组中，一般前一个 Component 的 endOffset 往往是后一个 Component 的 offset。
 
@@ -2342,7 +2392,7 @@ for (ci = cIndex; arrOffset < len; arrOffset++, ci++) {
 
 假设现在有一个空的 CompositeByteBuf，我们需要将一个数据范围为 `[1 , 4]` , readerIndex = 1 的 srcBuf ， 插入到 CompositeByteBuf 的 components 数组中。
 
-![img](https://cdn.nlark.com/yuque/0/2024/webp/35210587/1729763234312-79480d8c-f451-4518-9a43-4bdc639e7a2e.webp)
+![img](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202411222246813.webp)
 
 但是如果该 srcBuf 是一个视图 ByteBuf 的话，比如：SlicedByteBuf ， DuplicatedByteBuf。或者是一个被包装过的 ByteBuf ，比如：WrappedByteBuf ， SwappedByteBuf。
 
@@ -2388,7 +2438,7 @@ private Component newComponent(final ByteBuf buf, final int offset) {
 
 由于当前的 CompositeByteBuf 还是空的，里面没有包含任何逻辑数据，当长度为 4 的 srcBuf 加入之后，CompositeByteBuf 就产生了 `[0 , 3]` 这段逻辑数据范围，所以 srcBuf 所属 Component 的 offset = 0 , endOffset = 4 ，srcAdjustment = 1 ，adjustment = 4。
 
-![img](https://cdn.nlark.com/yuque/0/2024/webp/35210587/1729763353720-088ad2a4-9a72-463e-8577-fb0f906f2113.webp)
+![img](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202411222246306.webp)
 
 。。。
 
@@ -2396,7 +2446,7 @@ private Component newComponent(final ByteBuf buf, final int offset) {
 
 在前面的几个小节中，我们讨论了很多 ByteBuf 的设计细节，接下来让我们**跳出**这些细节，重新站在全局的视角下来看一下 ByteBuf 的总体设计。
 
-![img](https://cdn.nlark.com/yuque/0/2024/webp/35210587/1729763841723-d63737ab-5894-429f-863b-292ba039e0ce.webp)
+![img](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202411222246361.webp)
 
 在 ByteBuf 的整个设计体系中，Netty 从 ByteBuf 内存布局的角度上，将整个体系分为了 HeapByteBuf 和 DirectByteBuf 两个大类。Netty 提供了 `PlatformDependent.directBufferPreferred() `方法来指定在默认情况下，是否偏向于分配 Direct Memory。
 

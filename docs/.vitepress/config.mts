@@ -255,16 +255,16 @@ export default defineConfig({
             collapsed: true,
             items: [
               {
-                text: "Netty 的内存管理机制简介",
-                // link: "/memory_management/introduction",
+                text: "Netty 内存管理概述",
+                link: "/memory_management/introduction",
               },
               {
                 text: "数据载体",
                 items: [
-                  // {
-                  //   text: "ByteBuf",
-                  //   link: "/memory_management/data_carrier/ByteBuf.md",
-                  // },
+                  {
+                    text: "ByteBuf",
+                    // link: "/memory_management/data_carrier/ByteBuf.md",
+                  },
                 ],
               },
               {
@@ -272,13 +272,21 @@ export default defineConfig({
                 items: [
                   {
                     text: "对象池",
-                    link: "/memory_management/pooling_techniques/object_pool.md",
+                    // link: "/memory_management/pooling_techniques/object_pool.md",
                   },
                   {
                     text: "内存池",
-                    link: "/memory_management/pooling_techniques/memory_pool.md",
+                    // link: "/memory_management/pooling_techniques/memory_pool.md",
                   },
                 ],
+              },
+              {
+                text: "直接内存",
+                link: "/memory_management/Direct_Memory",
+              },
+              {
+                text: "零拷贝",
+                link: "/memory_management/Zero_Copy",
               },
             ],
           },

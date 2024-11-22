@@ -319,23 +319,23 @@ public final void read() {
 
 ![image-20241122220903666](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202411222209482.png)
 
-![image-20241122220909100](C:/Users/lxy/AppData/Roaming/Typora/typora-user-images/image-20241122220909100.png)
+![image-20241122220909100](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202411222318663.png)
 
-![image-20241122220914163](C:/Users/lxy/AppData/Roaming/Typora/typora-user-images/image-20241122220914163.png)
+![image-20241122220914163](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202411222317599.png)
 
-![image-20241122220919064](C:/Users/lxy/AppData/Roaming/Typora/typora-user-images/image-20241122220919064.png)
+![image-20241122220919064](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202411222317577.png)
 
-![image-20241122220923125](C:/Users/lxy/AppData/Roaming/Typora/typora-user-images/image-20241122220923125.png)
+![image-20241122220923125](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202411222317590.png)
 
 好了最后终于找到了
 
-![image-20241122220928353](C:/Users/lxy/AppData/Roaming/Typora/typora-user-images/image-20241122220928353.png)
+![image-20241122220928353](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202411222317039.png)
 
 这里主要决定了 `ByteBuf` 是 **unpooled** 还是 **pooled** 的，也就是 `ByteBuf` 的子类是池化的还是非池化的。
 
 我们再随机选择一个非池化 `allocator`，点进去看看。
 
-![image-20241122220934232](C:/Users/lxy/AppData/Roaming/Typora/typora-user-images/image-20241122220934232.png)
+![image-20241122220934232](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202411222317980.png)
 
 ![image-20241122220938140](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202411222210745.png)
 
@@ -343,7 +343,7 @@ public final void read() {
 
 最后，来到了这个静态代码块。
 
-![image-20241122220941651](C:/Users/lxy/AppData/Roaming/Typora/typora-user-images/image-20241122220941651.png)
+![image-20241122220941651](https://echo798.oss-cn-shenzhen.aliyuncs.com/img/202411222317224.png)
 
 这段代码通过检查几个条件来设置 `DIRECT_BUFFER_PREFERRED` 的值。我们逐条解释：
 
